@@ -769,25 +769,46 @@ const TRI_MAX  = [30, 30, 40];
 const TRI_PASS = [18, 18, 24];
 const CUM_MAX  = [30, 60, 100]; // acumulado após 1, 2 ou 3 trimestres lançados
 const CUM_PASS = [18, 36, 60];  // 60% do acumulado
-// Recuperação final: por disciplina. Só entra quem ficou abaixo de 60% no 1º e no 2º trimestres. (Comentário antigo: se o 1º e o 2º
-// estão lançados, vale a somatória completa. Se falta a nota de UM dos dois, a soma considera
-// só a nota existente e o aluno entra COM ASTERISCO (parcial=true), pois a nota ausente, somada
-// à presente, pode afastar o risco. Sem nenhuma das duas notas, não há o que avaliar. Para fechar o ano o aluno precisa de 60
-// pontos; se a somatória do 1º+2º (cada trimestre já com a recuperação) deixa uma demanda
-// SUPERIOR a 24 pontos (a média do 3º, que vale 40) no 3º trimestre, ele entra no risco
-// — ou seja, somatória do 1º+2º abaixo de 36.
+// Recuperação final: por disciplina. Entra quem fica abaixo de 60% no 3º trimestre OU perdeu a média em pelo menos
+// um trimestre anterior (regra completa logo abaixo, em oerInfo).
 const OER_MEDIA  = 60;   // aproveitamento mínimo (%) em cada trimestre
 const OER_TOTAL  = 60;
 const OER_LIMITE = 24;
 const OER_ELEVADO = 28;   // acima disso: risco elevadíssimo de Recuperação Final
 const OER_MAX_3TRI = 40;  // acima disso: nem o máximo do 3º trimestre cobre a demanda
-// Nova regra: o aluno entra em Recuperação final quando o 2º trimestre está com aproveitamento
-// (Desenv. Global) abaixo de 60%. Cada trimestre já avalia todo o período anterior; não há soma.
-// Se o 2º trimestre não foi lançado, não há como avaliar o risco.
-function oerNivel(precisa){ return 1; }
+// REGRA DA RECUPERAÇÃO FINAL (por disciplina), definida pela escola:
+//  - Passa de ano na disciplina quem alcança 60% no 3º trimestre E tem média (60%) em pelo menos um dos dois primeiros.
+//  - Recuperação final: (a) 3º trimestre abaixo de 60%; ou (b) média perdida nos DOIS primeiros trimestres
+//    (mesmo alcançando 60% no 3º). Média perdida no 1º e no 2º já leva à Recuperação final, e o aluno ainda
+//    precisa alcançar 60% no 3º trimestre.
+//  Cada trimestre já avalia todo o período anterior (não há soma); vale o % de cada trimestre.
+const oerHas = v => v!==null && v!==undefined;
+const oerFmtPct = v => oerHas(v) ? v+'%' : null;
+const OER_REGRA_TXT = '<b>Regra da Recuperação final:</b> entra em Recuperação final o aluno que fica abaixo de 60% no 3º trimestre ou que perdeu a média (abaixo de 60%) nos dois primeiros trimestres, mesmo que alcance 60% no 3º. Média perdida no 1º e no 2º trimestres já leva à Recuperação final, e o aluno ainda precisa alcançar 60% no 3º. Passa de ano quem alcança 60% no 3º trimestre e tem média em pelo menos um dos dois primeiros.';
+function oerListaTri(arr){ // [1,2] -> "1º e 2º"; [1,2,3] -> "1º, 2º e 3º"
+  const t = arr.map(n=>n+'º');
+  return t.length<=1 ? t.join('') : t.slice(0,-1).join(', ')+' e '+t[t.length-1];
+}
 function oerInfo(calc){
-  // Recuperação final: só para quem ficou abaixo de 60% em DOIS trimestres seguidos (1º e 2º).
-  // Se o 1º está >= 60% e o 2º abaixo, o aluno não vai para a recuperação: precisa de 60% no 3º trimestre.
+  const P = (calc && calc.pcts) ? calc.pcts : [];
+  const lost = [];
+  for(let k=0;k<3;k++){ if(oerHas(P[k]) && P[k] < OER_MEDIA) lost.push(k+1); }
+  const p3 = P[2];
+  const perdeuDois = lost.includes(1) && lost.includes(2);       // 1º e 2º abaixo de 60%
+  const perdeu3 = oerHas(p3) && p3 < OER_MEDIA;                   // 3º abaixo de 60%
+  if(!perdeuDois && !perdeu3) return null;
+  const launched = P.filter(oerHas);
+  const falta = Math.round((OER_MEDIA - Math.min(...launched))*10)/10;
+  const motivo = 'Média perdida no ' + oerListaTri(lost) + (lost.length>1 ? ' trimestres' : ' trimestre');
+  let obs3 = '';
+  if(!oerHas(p3)) obs3 = 'Precisa alcançar 60% no 3º trim.';
+  else if(p3 >= OER_MEDIA) obs3 = '3º trim. na média, mas o 1º e o 2º ficaram abaixo de 60%.';
+  const last = launched[launched.length-1];
+  return { t1:oerFmtPct(P[0]), t2:oerFmtPct(P[1]), t3:oerFmtPct(P[2]), lost, motivo, obs3,
+           soma:falta, precisa:OER_MEDIA, falta, ta:last, taMax:100, pct:last, parcial:false, faltaTri:null };
+}
+// Regra ANTIGA (1º e 2º abaixo de 60%), mantida apenas para a Liberação de Boletim do 2º trimestre.
+function oerInfoLiberacao(calc){
   const p1 = calc.pcts ? calc.pcts[0] : null;
   const p2 = calc.pcts ? calc.pcts[1] : null;
   if(p1===null || p1===undefined || p2===null || p2===undefined) return null;
@@ -795,19 +816,24 @@ function oerInfo(calc){
   const falta = Math.round((OER_MEDIA - p2)*10)/10;
   return { t1: p1+'%', t2: p2+'%', soma: falta, precisa: OER_MEDIA, falta, ta: p2, taMax: 100, pct: p2, parcial:false, faltaTri:null };
 }
-// Observação para o 3º trimestre, por disciplina (só com 1º e 2º lançados e 3º ainda não lançado).
-//  A) 1º e 2º >= 60%  -> basta alcançar 60% no 3º.
-//  B) 1º e 2º < 60%   -> 60% no 3º + atividade de recuperação.
-//  C) 1º >= 60% e 2º < 60% -> precisa, necessariamente, de 60% no 3º; abaixo disso, Recuperação final.
-//  (1º < 60% e 2º >= 60%: tratado como A, pois o aluno já recuperou no 2º.)
+function oerNivel(precisa){ return 1; }
+// Célula de um trimestre (negrito = média perdida; "—" = sem nota lançada).
+const oerCel = (s,k) => { const v = s['t'+k]; if(!oerHas(v)) return '—'; return (s.lost && s.lost.includes(k)) ? `<b>${v}</b>` : v; };
+const oerTrioTxt = s => { const v = x => oerHas(x) ? x : 'sem nota'; return `1º: ${v(s.t1)} · 2º: ${v(s.t2)} · 3º: ${v(s.t3)}`; };
+// Observação para o 3º trimestre, por disciplina (1º e 2º lançados e 3º ainda não lançado).
+//  A) 1º e 2º >= 60%                -> basta alcançar 60% no 3º.
+//  C) só um dos dois < 60%          -> precisa, necessariamente, de 60% no 3º; abaixo disso, Recuperação final.
+//  B) 1º e 2º < 60%                 -> já está em Recuperação final; ainda precisa de 60% no 3º + atividade de recuperação.
 function obs3Info(calc){
   if(!calc || !calc.pcts) return null;
-  const p1 = calc.pcts[0], p2 = calc.pcts[1];
-  if(p1===null || p1===undefined || p2===null || p2===undefined) return null;
   if(calc.tris && calc.tris[2] && calc.tris[2].filled) return null;
-  if(p1<OER_MEDIA && p2<OER_MEDIA) return {tipo:'B', t1:p1+'%', t2:p2+'%', txt:'Precisa alcançar 60% no 3º trimestre e também realizar a atividade de recuperação.'};
-  if(p1>=OER_MEDIA && p2<OER_MEDIA) return {tipo:'C', t1:p1+'%', t2:p2+'%', txt:'Precisa, necessariamente, alcançar a média de 60% no 3º trimestre. Se ficar abaixo de 60%, ficará em Recuperação final.'};
-  return {tipo:'A', t1:p1+'%', t2:p2+'%', txt:'Para progredir, precisa apenas alcançar a média de 60% no 3º trimestre.'};
+  const p1 = calc.pcts[0], p2 = calc.pcts[1];
+  if(!oerHas(p1) || !oerHas(p2)) return null;
+  const t1 = oerFmtPct(p1), t2 = oerFmtPct(p2);
+  const l1 = p1<OER_MEDIA, l2 = p2<OER_MEDIA;
+  if(l1 && l2) return {tipo:'B', t1, t2, lost:[1,2], txt:'Média perdida no 1º e no 2º trimestres: o aluno já está em Recuperação final. Precisa alcançar 60% no 3º trimestre e também realizar a atividade de recuperação.'};
+  if(l1 || l2) return {tipo:'C', t1, t2, lost:[l1?1:2], txt:'Precisa, necessariamente, alcançar a média de 60% no 3º trimestre. Se ficar abaixo de 60%, ficará em Recuperação final.'};
+  return {tipo:'A', t1, t2, lost:[], txt:'Para progredir, precisa apenas alcançar a média de 60% no 3º trimestre.'};
 }
 // Apoio à sinalização de nota ausente (asterisco + observação) na tela e nas impressões.
 const oerV   = v => (v===null||v===undefined) ? '—' : v;
@@ -1278,11 +1304,10 @@ function computeStats(classData, tri){
   return {stats, destaques70, destaquesPort, destaquesMat, atencao};
 }
 
-// Alunos em Recuperação final: para CADA disciplina com 1º e 2º trimestres lançados em que
-// 60 - (1º+2º) > 24, monta um card individual do aluno listando a(s) disciplina(s) em
-// risco, a somatória do 1º+2º e quantos pontos ele precisa no 3º trimestre.
-// Diferente de "atencao" (que só sinaliza quem está mal em 2+ disciplinas),
-// aqui entra qualquer aluno com pelo menos 1 disciplina em Recuperação final.
+// Alunos em Recuperação final: para CADA disciplina em que o aluno perdeu a média (abaixo de 60%) em pelo menos
+// um trimestre lançado (1º, 2º ou 3º), monta um card individual listando a(s) disciplina(s), o % de cada trimestre
+// e o motivo. Diferente de "atencao" (que só sinaliza quem está mal em 2+ disciplinas), aqui entra qualquer aluno
+// com pelo menos 1 disciplina em Recuperação final.
 function computeRetentionRisk(classData){
   const {subjects, students} = classData;
   const risk = students.map(st=>{
@@ -1303,11 +1328,11 @@ function computeRetentionRisk(classData){
 
 function riskCards(list){
   if(!list.length){
-    return `<div class="risk-empty">Nenhum aluno em Recuperação final (1º e 2º trimestres abaixo de 60%) em alguma disciplina.</div>`;
+    return `<div class="risk-empty">Nenhum aluno em Recuperação final em nenhuma disciplina.</div>`;
   }
   return list.map(st=>{
     const rows = st.subjects.map(s=>
-      `<div class="risk-subj-row"><span class="risk-subj-name">${s.name}</span><span class="risk-subj-val">2º trim.: ${s.t2} · faltam ${s.falta} p.p. para 60%</span></div>`
+      `<div class="risk-subj-row"><span class="risk-subj-name">${s.name}</span><span class="risk-subj-val">${oerTrioTxt(s)}<br>${s.motivo}.${s.obs3?' '+s.obs3:''}</span></div>`
     ).join('');
     return `<div class="risk-card">
       <h4>${st.name}</h4>
@@ -1350,7 +1375,7 @@ function printRiskBySubject(className){
   if(bySubject.length===0){
     html = `<div class="print-page">
       <div class="print-page-hdr"><div><h1>${className}</h1><div class="print-page-sub">${(cfg.escola||'')} · ${effectiveMesAno(cd)}</div></div></div>
-      <p>Nenhum aluno em Recuperação final (1º e 2º trimestres abaixo de 60%) em nenhuma disciplina.</p>
+      <p>Nenhum aluno em Recuperação final em nenhuma disciplina.</p>
     </div>`;
   } else {
     html = bySubject.map(sec => `
@@ -1363,11 +1388,11 @@ function printRiskBySubject(className){
           <div class="print-page-teacher">Professor(a): ______________________________</div>
         </div>
         <table class="print-subj-table">
-          <thead><tr><th>Aluno</th><th>1º Trim.</th><th>2º Trim.</th><th>Faltam p/ 60% (2º trim.)</th><th>Meta no 3º trim.</th><th>Obs.</th></tr></thead>
+          <thead><tr><th>Aluno</th><th>1º Trim.</th><th>2º Trim.</th><th>3º Trim.</th><th>Situação</th><th>Obs.</th></tr></thead>
           <tbody>
-            ${sec.students.map(s=>`<tr><td>${s.name}</td><td>${oerV(s.t1)}</td><td>${oerV(s.t2)}</td><td>${s.falta} p.p.</td><td>mínimo 60%</td><td></td></tr>`).join('')}
+            ${sec.students.map(s=>`<tr><td>${s.name}</td><td>${oerCel(s,1)}</td><td>${oerCel(s,2)}</td><td>${oerCel(s,3)}</td><td>${s.motivo}.${s.obs3?' '+s.obs3:''}</td><td></td></tr>`).join('')}
           </tbody>
-        </table>${oerLegendHtml(sec.students)}
+        </table><div class="oer-legend">${OER_REGRA_TXT} Em negrito: trimestre com média perdida; “—” = sem nota lançada.</div>${oerLegendHtml(sec.students)}
       </div>`).join('');
   }
   document.getElementById('printSubjectDoc').innerHTML = html;
@@ -1484,7 +1509,7 @@ function printOerCards(){
   const risk = computeRetentionRisk(m.cd).slice().sort((a,b)=> a.name.localeCompare(b.name));
   return risk.map(st=>{
     const rows = st.subjects.map(s=>
-      `<tr><td class="l">${s.name}</td><td>${oerV(s.t1)}</td><td>${oerV(s.t2)}</td><td>${s.falta} p.p.</td><td class="need n1">60%<small>mínimo no 3º trim.</small></td></tr>`
+      `<tr><td class="l">${s.name}</td><td>${oerCel(s,1)}</td><td>${oerCel(s,2)}</td><td>${oerCel(s,3)}</td><td class="need n1">${oerHas(s.t3)?'—<small>3º trim. já lançado</small>':'60%<small>mínimo no 3º trim.</small>'}</td></tr>`
     ).join('');
     const dens = st.subjects.length>=8 ? ' d xd' : (st.subjects.length>=6 ? ' d' : '');
     const one = via => `<div class="oer-card${dens}">
@@ -1494,11 +1519,11 @@ function printOerCards(){
       <div class="oer-card-name">${st.name}</div>
       <div class="oer-card-sub">Turma ${m.turma}${m.mesAno ? ' · '+m.mesAno : ''}</div>
       <table>
-        <colgroup><col style="width:30%"><col style="width:13%"><col style="width:13%"><col style="width:16%"><col style="width:28%"></colgroup>
-        <thead><tr><th class="l">Disciplina</th><th>1º Trim.</th><th>2º Trim.</th><th>Faltam p/ 60%</th><th class="need-h">META NO 3º TRIM.<small>aproveitamento mínimo</small></th></tr></thead>
+        <colgroup><col style="width:30%"><col style="width:13%"><col style="width:13%"><col style="width:13%"><col style="width:31%"></colgroup>
+        <thead><tr><th class="l">Disciplina</th><th>1º Trim.</th><th>2º Trim.</th><th>3º Trim.</th><th class="need-h">META NO 3º TRIM.<small>aproveitamento mínimo</small></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <div class="oer-card-note">Cada trimestre avalia todo o período até aquele momento, e o aluno precisa de <b>aproveitamento de 60% ou mais</b> no 3º trimestre. Nas disciplinas acima, o 1º e o 2º trimestres ficaram <b>abaixo de 60%</b>, por isso o aluno está em Recuperação final.</div>
+      <div class="oer-card-note">Pela regra da escola, fica em Recuperação final o aluno que <b>perde a média (abaixo de 60%) no 1º e no 2º trimestres</b> — mesmo que alcance 60% no 3º — ou que fica <b>abaixo de 60% no 3º trimestre</b>. Nas disciplinas acima isso aconteceu (em <b>negrito</b>, o trimestre com média perdida). Quando o 3º trimestre ainda não foi lançado, o aluno precisa alcançar <b>60% ou mais</b> nele. Passa de ano quem alcança 60% no 3º e tem média em pelo menos um dos dois primeiros.</div>
       <div class="oer-card-alert"><b>A Recuperação final é a última oportunidade</b>: não há nova chance depois dela. Por isso, esta situação <b>exige mudança de rotina e foco nos estudos desde já</b>.</div>${oerAlertasNivel(st)}${oerCardObs(st)}
       ${via === 'Via da escola' ? `<div class="oer-card-sign">Ciente do responsável: ____________________________ &nbsp;Data: ____/____/______</div>` : ''}
     </div>`;
@@ -1527,7 +1552,9 @@ function printOerTable(){
       const by = {}; st.subjects.forEach(s=>{ by[s.name] = s; });
       const cells = subjects.map(sn=>{
         const s = by[sn];
-        return s ? `<td class="risk">${s.t2}</td>` : `<td>–</td>`;
+        if(!s) return `<td>–</td>`;
+        const trio = [1,2,3].map(k=>{ const v = s['t'+k]; if(!oerHas(v)) return 's/n'; const n = String(v).replace('%',''); return s.lost.includes(k) ? `<u>${n}</u>` : n; }).join(' / ');
+        return `<td class="risk">${trio}</td>`;
       }).join('');
       return `<tr><td>${i+1}</td><td class="l">${st.name}</td>${cells}<td><strong>${st.subjects.length}</strong></td></tr>`;
     }).join('');
@@ -1537,7 +1564,7 @@ function printOerTable(){
       <thead><tr><th>Nº</th><th class="l">Aluno</th>${head}<th>Disc. em risco</th></tr></thead>
       <tbody>${body}</tbody>
     </table>
-    <div class="oer-legend">Valor na célula = aproveitamento do aluno no 2º trimestre (abaixo de 60%). "–" = sem risco na disciplina.</div>${oerLegendHtml(risk.flatMap(x=>x.subjects))}
+    <div class="oer-legend">Cada célula mostra o aproveitamento (%) no 1º / 2º / 3º trimestre; <u>sublinhado</u> = trimestre com média perdida (abaixo de 60%); s/n = sem nota lançada; "–" = sem risco na disciplina.</div>${oerLegendHtml(risk.flatMap(x=>x.subjects))}
   </div>`;
   }).filter(Boolean);
   if(!pages.length){ alert('Nenhum aluno das turmas selecionadas em Recuperação final.'); return; }
@@ -1785,7 +1812,7 @@ function renderOerTab(){
   const sections = sel.map(n=>{
     const risk = riskBy[n];
     return `<div class="risk-section">
-      <div class="section-title">${shortTurmaLabel(n)} — ${risk.length} de ${currentClasses[n].students.length} alunos em Recuperação final (1º e 2º trimestres abaixo de 60%, por disciplina)</div>
+      <div class="section-title">${shortTurmaLabel(n)} — ${risk.length} de ${currentClasses[n].students.length} alunos em Recuperação final (1º e 2º trimestres abaixo de 60%, ou 3º abaixo de 60%, por disciplina)</div>
       ${oerTemParcial(risk) ? `<div class="risk-legend">${OER_ASTERISCO_TXT}</div>` : ''}<div class="risk-grid">${riskCards(risk)}</div>
     </div>`;
   }).join('');
@@ -1799,6 +1826,7 @@ function renderOerTab(){
       <label class="oer-chip all${allOn?' on':''}"><input type="checkbox" id="oerAllCb" ${allOn?'checked':''}> Todas</label>
       ${chips}
     </div>
+    <div class="risk-legend" style="margin:0 0 14px">${OER_REGRA_TXT}</div>
     <div class="risk-actions" style="margin:0 0 18px">
       <button class="print-btn" onclick="printOerCards()" ${sel.length?'':'disabled'}>🖶 Cards de Recuperação final para entrega ao aluno (${sel.length===1?'esta turma':sel.length===names.length?'todas as turmas':sel.length+' turmas'})</button>
       <button class="print-btn" onclick="printOerTable()" ${sel.length?'':'disabled'}>🖶 Tabela de alunos em Recuperação final (${sel.length===1?'esta turma':sel.length===names.length?'todas as turmas':sel.length+' turmas'})</button>
@@ -1940,7 +1968,7 @@ function libCalcular(){
         const t1 = calc.tris[0], t2 = calc.tris[1];
         if(!t1.filled && !t2.filled){ semNota.push(sn); return; }
         algumaNota = true;
-        const oerL = oerInfo(calc);
+        const oerL = oerInfoLiberacao(calc);
         if(oerL) pend.push(`${sn}: 2º trim. com ${oerL.t2} (abaixo de 60%)`);
       });
       motivos.push(...pend);
@@ -2921,7 +2949,7 @@ const REP_IND_VARS = [
     ['evolucao','Evolução entre os trimestres (aluno × turma)'],
     ['acumulado','Total acumulado do ano e pontos que faltam para a média']]},
   {g:'Recuperação final e acompanhamento', items:[
-    ['oer','Recuperação final (alunos com 1º e 2º trimestres abaixo de 60%)'],
+    ['oer','Recuperação final (alunos com 1º e 2º trimestres abaixo de 60%, ou 3º trimestre abaixo de 60%)'],
     ['obs3','Observação para o 3º trimestre (o que o aluno precisa em cada disciplina)'],
     ['destaques','Pontos fortes e disciplinas de atenção'],
     ['orient','Orientações à família (texto-base automático)']]},
@@ -2944,7 +2972,7 @@ const REP_TUR_VARS = [
     ['criticas','Disciplinas que exigem atenção (menores % na média)'],
     ['comparativo','Quadro comparativo entre as turmas selecionadas (2 ou mais turmas)']]},
   {g:'Alunos', items:[
-    ['oer','Alunos em Recuperação final (disciplinas e pontos necessários)'],
+    ['oer','Alunos em Recuperação final (disciplinas e trimestres com média perdida)'],
     ['acomp','Alunos em acompanhamento (abaixo da média em 2 ou mais disciplinas)'],
     ['destaques','Alunos em destaque (≥ 70% em todas; ≥ 90% em Português e Matemática)']]},
   {g:'Registro e assinaturas', items:[
@@ -2961,7 +2989,7 @@ const REP_TUR_PRESETS = {
 const repState = {
   modo:'ind', turmas:new Set(), turmaAluno:null, alunos:new Set(), filtro:'', tri:'auto',
   indPreset:'padrao', varsInd:new Set(REP_IND_PRESETS.padrao.vars),
-  turPreset:'completo', varsTur:new Set(REP_TUR_ALL), msg:'', started:false, preview:null
+  turPreset:'completo', varsTur:new Set(REP_TUR_ALL), msg:'', started:false, preview:null, discs:null
 };
 
 // ---------- cálculos ----------
@@ -3096,8 +3124,8 @@ function repIndividualPage(cd, className, st, V, t){
     const risk = data.filter(d=>d.oer);
     if(risk.length){
       const rows = risk.map(d=>{ const o=d.oer;
-        return `<tr><td class="l">${escHtml(d.name)}</td><td>${oerV(o.t1)}</td><td>${oerV(o.t2)}</td><td>${o.falta} p.p.</td><td class="t-bad"><b>60%</b></td><td class="l">1º e 2º trim. abaixo de 60%</td></tr>`; });
-      parts.push(rpSec('Recuperação Final', rpTable([{t:'Disciplina',l:1},{t:'1º trim.'},{t:'2º trim.'},{t:'Faltam p/ 60%'},{t:'Meta no 3º<small>mínimo 60%</small>'},{t:'Observação',l:1}], rows) + (oerTemParcial(risk.map(d=>d.oer)) ? `<div class="rp-note">${OER_ASTERISCO_TXT}</div>` : '')));
+        return `<tr><td class="l">${escHtml(d.name)}</td><td>${oerCel(o,1)}</td><td>${oerCel(o,2)}</td><td>${oerCel(o,3)}</td><td class="l t-bad">${o.motivo}.${o.obs3?' '+o.obs3:''}</td></tr>`; });
+      parts.push(rpSec('Recuperação Final', rpTable([{t:'Disciplina',l:1},{t:'1º trim.'},{t:'2º trim.'},{t:'3º trim.'},{t:'Observação',l:1}], rows) + (oerTemParcial(risk.map(d=>d.oer)) ? `<div class="rp-note">${OER_ASTERISCO_TXT}</div>` : '')));
     } else {
       parts.push(rpSec('Recuperação Final', `<div class="rp-ok">Nenhuma disciplina em Recuperação final com as notas lançadas até o momento.</div>`));
     }
@@ -3106,7 +3134,7 @@ function repIndividualPage(cd, className, st, V, t){
   if(V.has('obs3')){
     const o3 = data.map(d=>({d, o:obs3Info(d.calc)})).filter(x=>x.o);
     if(o3.length){
-      const rows3 = o3.map(({d,o})=>`<tr><td class="l">${escHtml(d.name)}</td><td>${o.t1}</td><td class="${o.tipo==='A'?'':'t-bad'}">${o.t2}</td><td class="l ${o.tipo==='A'?'':'t-bad'}">${o.txt}</td></tr>`);
+      const rows3 = o3.map(({d,o})=>`<tr><td class="l">${escHtml(d.name)}</td><td class="${o.lost&&o.lost.includes(1)?'t-bad':''}">${oerV(o.t1)}</td><td class="${o.lost&&o.lost.includes(2)?'t-bad':''}">${oerV(o.t2)}</td><td class="l ${o.tipo==='A'?'':'t-bad'}">${o.txt}</td></tr>`);
       parts.push(rpSec('Observação para o 3º trimestre', rpTable([{t:'Disciplina',l:1},{t:'1º trim.'},{t:'2º trim.'},{t:'Observação',l:1}], rows3)));
     }
   }
@@ -3191,9 +3219,9 @@ function famChartEvo(cd, st){
   return famSvg(W, H, g, 'Evolução do aproveitamento por trimestre');
 }
 
-// Gráfico 3: aproveitamento do 2º trimestre nas disciplinas em Recuperação final (abaixo de 60%).
+// Gráfico 3: aproveitamento (1º, 2º e 3º trimestres) nas disciplinas em Recuperação final.
 function famChartOer(risk){
-  const n = risk.length, rh = n>8 ? 24 : 30, W = 340, bx = 112, bw = 150, top = 22, H = top + n*rh + 4;
+  const n = risk.length, rh = n>8 ? 26 : 32, W = 370, bx = 112, bw = 150, top = 22, H = top + n*rh + 4;
   const X = v => bx + bw*Math.min(v,100)/100;
   let g = '';
   [0,100].forEach(v=>{ g += `<line x1="${X(v)}" y1="${top-4}" x2="${X(v)}" y2="${H-2}" stroke="#bbb" stroke-width=".7"/><text x="${X(v)}" y="${top-9}" font-size="9" fill="#444" text-anchor="middle">${v}%</text>`; });
@@ -3201,12 +3229,15 @@ function famChartOer(risk){
   risk.forEach((d,i)=>{
     const o = d.oer, y = top + i*rh, cy = y + rh/2;
     g += `<text x="0" y="${cy+3.5}" font-size="10" font-weight="600">${escHtml(titleCase(d.name).slice(0,20))}</text>`;
-    const h2 = (rh-6)/2;
-    g += `<rect x="${bx}" y="${y+3}" width="${Math.max(1,X(parseFloat(o.t1))-bx)}" height="${h2-1}" rx="2" fill="#fde7a0" stroke="#444" stroke-width=".7"/>`;
-    g += `<rect x="${bx}" y="${y+3+h2}" width="${Math.max(1,X(parseFloat(o.t2))-bx)}" height="${h2-1}" rx="2" fill="#f2b36b" stroke="#444" stroke-width=".7"/>`;
-    g += `<text x="${bx+bw+8}" y="${cy+3.5}" font-size="10" font-weight="800">${o.t1} · ${o.t2}</text>`;
+    const h3 = (rh-6)/3;
+    [[o.t1,'#fde7a0'],[o.t2,'#f2b36b'],[o.t3,'#e07b39']].forEach(([v,cor],j)=>{
+      if(!oerHas(v)) return;
+      g += `<rect x="${bx}" y="${y+3+j*h3}" width="${Math.max(1,X(parseFloat(v))-bx)}" height="${h3-1}" rx="2" fill="${cor}" stroke="#444" stroke-width=".7"/>`;
+    });
+    const tx = [o.t1,o.t2,o.t3].map(v=> oerHas(v) ? String(v).replace('%','') : '–').join(' · ');
+    g += `<text x="${bx+bw+8}" y="${cy+3.5}" font-size="9.5" font-weight="800">${tx}</text>`;
   });
-  return famSvg(W, H, g, '1º e 2º trimestres nas disciplinas em Recuperação final');
+  return famSvg(W, H, g, '1º, 2º e 3º trimestres nas disciplinas em Recuperação final');
 }
 
 function repFamiliaPage(cd, className, st, t){
@@ -3246,7 +3277,7 @@ function repFamiliaPage(cd, className, st, t){
   // evolução + Recuperação final lado a lado
   const evo = `<div class="rp-sec"><div class="rp-sec-t">Evolução ao longo do ano</div><div class="fm-pad">${famChartEvo(cd, st)}<div class="fm-leg"><span><b style="color:#1f4e79">●</b> ${escHtml(primeiro)}</span><span>□ média da turma</span></div></div></div>`;
   const oerBox = risk.length
-    ? `<div class="fm-pad">${famChartOer(risk)}<div class="fm-leg"><span>Só aparecem as disciplinas com 1º e 2º trimestres abaixo de 60% (barra clara = 1º, escura = 2º). No 3º trimestre: 60% ou mais e atividade de recuperação.</span></div></div>`
+    ? `<div class="fm-pad">${famChartOer(risk)}<div class="fm-leg"><span>Só aparecem as disciplinas com 1º e 2º trimestres abaixo de 60%, ou com 3º trimestre abaixo de 60% (barra clara = 1º, intermediária = 2º, escura = 3º; valores em %, “–” = sem nota). No 3º trimestre, o aluno precisa alcançar 60%.</span></div></div>`
     : `<div class="rp-ok" style="padding:10px 8px">Nenhuma disciplina em Recuperação final com as notas lançadas até agora.</div>`;
   parts.push(`<div class="fm-two">${evo}<div class="rp-sec"><div class="rp-sec-t">Componentes Curriculares com indicação de Recuperação Final (Paralela ao 3º Trimestre)</div>${oerBox}${risk.length && oerTemParcial(risk.map(d=>d.oer)) ? `<div class="rp-note">${OER_ASTERISCO_TXT}</div>` : ''}</div></div>`);
 
@@ -3257,17 +3288,20 @@ function repFamiliaPage(cd, className, st, t){
   const lei = [];
   if(fortes.length) lei.push(`<p><b>Está indo bem em:</b> ${lst(fortes)}. Vale reconhecer o esforço e manter a rotina.</p>`);
   if(abaixo.length) lei.push(`<p><b>Precisa de mais atenção em:</b> ${lst(abaixo)}. Combine um horário fixo de estudo todos os dias, revise o caderno e procure o(a) professor(a) para tirar dúvidas e fazer as atividades de recuperação.</p>`);
-  if(risk.length) lei.push(`<p><b>Recuperação final:</b> em ${risk.length} disciplina${risk.length===1?'':'s'} o 1º e o 2º trimestres ficaram abaixo de 60%. A Recuperação final é a última chance de recuperar; converse com a escola o quanto antes.</p>`);
+  if(risk.length) lei.push(`<p><b>Recuperação final:</b> em ${risk.length} disciplina${risk.length===1?'':'s'} o aluno perdeu a média (abaixo de 60%) no 1º e no 2º trimestres, ou ficou abaixo de 60% no 3º. A Recuperação final é a última chance de recuperar; converse com a escola o quanto antes.</p>`);
+  if(!abaixo.length && !risk.length) lei.push('<p>O desempenho está dentro do esperado. Incentive a manutenção da rotina de estudos e o acompanhamento das atividades.</p>');
+  parts.push(rpSec('Leitura do trimestre', `<div class="fm-read">${lei.join('')}</div>`));
+  // 2º card: o que cada disciplina precisa no 3º trimestre (só aparece enquanto o 3º não foi lançado)
   {
     const o3 = data.map(d=>({d, o:obs3Info(d.calc)})).filter(x=>x.o);
     const grp = tp => o3.filter(x=>x.o.tipo===tp).map(x=>x.d);
     const gA = grp('A'), gB = grp('B'), gC = grp('C');
-    if(gA.length) lei.push(`<p><b>3º trimestre — ${lst(gA)}:</b> para progredir, precisa apenas alcançar a média de 60%.</p>`);
-    if(gC.length) lei.push(`<p><b>3º trimestre — ${lst(gC)}:</b> precisa, necessariamente, alcançar a média de 60%. Se ficar abaixo de 60%, ficará em Recuperação final.</p>`);
-    if(gB.length) lei.push(`<p><b>3º trimestre — ${lst(gB)}:</b> precisa alcançar 60% e também realizar a atividade de recuperação.</p>`);
+    const ori = [];
+    if(gA.length) ori.push(`<p><b>Basta alcançar 60% no 3º trimestre:</b> ${lst(gA)}.</p>`);
+    if(gC.length) ori.push(`<p><b>Precisa, necessariamente, alcançar 60% no 3º trimestre:</b> ${lst(gC)}. Se ficar abaixo de 60%, ficará em Recuperação final.</p>`);
+    if(gB.length) ori.push(`<p><b>Já está em Recuperação final (1º e 2º trimestres abaixo de 60%):</b> ${lst(gB)}. Precisa alcançar 60% no 3º trimestre e realizar a atividade de recuperação.</p>`);
+    if(ori.length) parts.push(rpSec('3º trimestre — orientações por disciplina para obter PROGRESSÃO (“passar de ano”)', `<div class="fm-read">${ori.join('')}</div>`));
   }
-  if(!abaixo.length && !risk.length) lei.push('<p>O desempenho está dentro do esperado. Incentive a manutenção da rotina de estudos e o acompanhamento das atividades.</p>');
-  parts.push(rpSec('Leitura do trimestre e orientações', `<div class="fm-read">${lei.join('')}</div>`));
 
   const ln = n>=11 ? 2 : 3;
   parts.push(`<div class="rp-sec"><div class="rp-sec-t">Minha análise e meu plano (aluno)</div><div class="fm-q">O que percebo neste resultado? O que vou fazer no próximo trimestre?</div>${rpLines(ln+2)}</div>`);
@@ -3323,7 +3357,7 @@ function repTurmaPage(cd, className, V, t){
   }
 
   if(V.has('oer')){
-    parts.push(rpSec('Alunos em Recuperação final ('+risk.length+')', risk.length ? rpTable([{t:'Nº'},{t:'Aluno',l:1},{t:'Disciplinas em Recuperação final (aproveitamento no 2º trimestre)',l:1}], risk.map((r,i)=>`<tr><td>${i+1}</td><td class="l">${escHtml(r.name)}</td><td class="l">${r.subjects.map(s=>escHtml(s.name)+' (<b>'+s.t2+'</b>)').join('; ')}</td></tr>`),'rp-list') + (oerTemParcial(risk.flatMap(r=>r.subjects)) ? `<div class="rp-note">${OER_ASTERISCO_TXT}</div>` : '') : `<div class="rp-ok">Nenhum aluno em Recuperação final com as notas lançadas.</div>`));
+    parts.push(rpSec('Alunos em Recuperação final ('+risk.length+')', risk.length ? rpTable([{t:'Nº'},{t:'Aluno',l:1},{t:'Disciplinas em Recuperação final (aproveitamento no 1º / 2º / 3º trimestre; negrito = média perdida)',l:1}], risk.map((r,i)=>`<tr><td>${i+1}</td><td class="l">${escHtml(r.name)}</td><td class="l">${r.subjects.map(s=>escHtml(s.name)+' ('+[1,2,3].map(k=>oerCel(s,k)).join(' / ')+')').join('; ')}</td></tr>`),'rp-list') + (oerTemParcial(risk.flatMap(r=>r.subjects)) ? `<div class="rp-note">${OER_ASTERISCO_TXT}</div>` : '') : `<div class="rp-ok">Nenhum aluno em Recuperação final com as notas lançadas.</div>`));
   }
 
   if(V.has('acomp')){
@@ -3341,7 +3375,7 @@ function repTurmaPage(cd, className, V, t){
   if(V.has('plano')) parts.push(rpSec('Plano de intervenção', rpTable([{t:'Ação / encaminhamento',l:1},{t:'Responsável',l:1},{t:'Prazo'}], [1,2,3,4].map(()=>'<tr class="blank"><td></td><td></td><td></td></tr>'),'rp-plan')));
   if(V.has('assin')) parts.push(rpAssin(cd.meta && cd.meta.professor));
 
-  const foot = `<div class="rp-foot"><b>Notas:</b> “% na média” = alunos que atingiram a média ÷ alunos com nota lançada${t==='ALL'?'; no acumulado, a média é 60% do máximo de pontos do ano':'; média = 60%'}. “Média (%)” e “Mediana (%)” são calculadas sobre o % de pontos obtidos. Em acompanhamento = abaixo da média em 2 ou mais disciplinas. Recuperação final = soma do 1º+2º trimestres abaixo de 36 (precisa de mais de 24 pontos no 3º). ${RP_TINT_NOTE} Literatura não é exibida.</div>`;
+  const foot = `<div class="rp-foot"><b>Notas:</b> “% na média” = alunos que atingiram a média ÷ alunos com nota lançada${t==='ALL'?'; no acumulado, a média é 60% do máximo de pontos do ano':'; média = 60%'}. “Média (%)” e “Mediana (%)” são calculadas sobre o % de pontos obtidos. Em acompanhamento = abaixo da média em 2 ou mais disciplinas. Recuperação final = 1º e 2º trimestres abaixo de 60%, ou 3º trimestre abaixo de 60%; passa quem alcança 60% no 3º e tem média em pelo menos um dos dois primeiros. ${RP_TINT_NOTE} Literatura não é exibida.</div>`;
   return rpWrap(rpHeader('Relatório da turma', escHtml(turma)+' · '+repTriNome(t)+' · '+escHtml(effectiveMesAno(cd))), parts.join('')+foot);
 }
 
@@ -3357,6 +3391,80 @@ function repComparativoPage(names, V){
   return rpWrap(rpHeader('Quadro comparativo entre as turmas', 'Turmas selecionadas: '+names.length+' · '+escHtml(effectiveMesAno(currentClasses[names[0]]))), rpSec('Comparativo', body)+`<div class="rp-foot"><b>Notas:</b> “Notas na média” = % de notas (alunos × disciplinas) que atingiram a média no trimestre de referência de cada turma. Literatura não é considerada. ${RP_TINT_NOTE}</div>`);
 }
 
+// ---------- LISTAGENS DE SITUAÇÃO (Recuperação final e possibilidade de progressão) ----------
+// Situação do aluno em UMA disciplina:
+//  REC    = Recuperação final (3º abaixo de 60%, ou 1º e 2º abaixo de 60%)
+//  POSS_C = possibilidade de progressão, mas precisa, necessariamente, de 60% no 3º (perdeu a média em um dos dois primeiros)
+//  POSS_A = possibilidade de progressão, basta alcançar 60% no 3º (média nos dois primeiros)
+//  PROG   = progressão garantida (3º na média + média em pelo menos um dos dois primeiros)
+//  ND     = sem notas suficientes para classificar
+const SIT_INFO = {
+  REC:    {ord:0, t:'Recuperação final', cls:'t-bad'},
+  POSS_C: {ord:1, t:'Possibilidade: precisa de 60% no 3º trim.', cls:'t-mid'},
+  POSS_A: {ord:2, t:'Possibilidade: basta 60% no 3º trim.', cls:''},
+  PROG:   {ord:3, t:'Progressão garantida', cls:''},
+  ND:     {ord:4, t:'Sem notas suficientes', cls:'na'}
+};
+function oerSituacao(calc){
+  const P = (calc && calc.pcts) ? calc.pcts : [];
+  const lost = [1,2,3].filter(k=> oerHas(P[k-1]) && P[k-1] < OER_MEDIA);
+  const base = {t1:oerFmtPct(P[0]), t2:oerFmtPct(P[1]), t3:oerFmtPct(P[2]), lost};
+  const rec = oerInfo(calc);
+  if(rec) return {...base, cod:'REC', det: rec.motivo + (rec.obs3 ? '. '+rec.obs3 : '.')};
+  if(oerHas(P[2])){
+    const medUm = (oerHas(P[0]) && P[0]>=OER_MEDIA) || (oerHas(P[1]) && P[1]>=OER_MEDIA);
+    if(medUm) return {...base, cod:'PROG', det:'3º trim. na média e média em pelo menos um dos dois primeiros.'};
+    return {...base, cod:'ND', det:'Falta lançar a nota do 1º ou do 2º trimestre.'};
+  }
+  const o = obs3Info(calc);
+  if(o && o.tipo==='A') return {...base, cod:'POSS_A', det:'Precisa apenas alcançar 60% no 3º trim.'};
+  if(o && o.tipo==='C') return {...base, cod:'POSS_C', det:'Precisa, necessariamente, de 60% no 3º trim.; abaixo disso, Recuperação final.'};
+  return {...base, cod:'ND', det:'Faltam notas para classificar.'};
+}
+const repSitCel = (sit,k) => { const v = sit['t'+k]; if(!oerHas(v)) return '–'; return sit.lost.includes(k) ? `<b>${v}</b>` : v; };
+const repSitTrio = sit => [1,2,3].map(k=>repSitCel(sit,k)).join(' / ');
+const REP_SIT_NOTA = 'Negrito = trimestre abaixo de 60%; “–” = sem nota lançada. Progressão: quem alcança 60% no 3º trimestre e tem média em pelo menos um dos dois primeiros. ';
+
+// Listagem por DISCIPLINA/TURMA: todos os alunos da turma naquela disciplina, ordenados por situação.
+function repListaDiscPage(cd, className, subjIdx){
+  cd.meta = cd.meta || {};
+  const turma = shortTurmaLabel(className), subj = cd.subjects[subjIdx];
+  const rows = cd.students.map(st=>({st, sit: oerSituacao(subjectCalc(st.subjects[subjIdx]))}))
+    .sort((a,b)=> SIT_INFO[a.sit.cod].ord - SIT_INFO[b.sit.cod].ord || a.st.name.localeCompare(b.st.name));
+  const cont = c => rows.filter(r=>r.sit.cod===c).length;
+  const resumo = ['REC','POSS_C','POSS_A','PROG','ND'].filter(c=>cont(c)).map(c=>`<b>${cont(c)}</b> ${SIT_INFO[c].t}`).join(' &nbsp;·&nbsp; ');
+  const body = rpTable([{t:'Nº'},{t:'Aluno',l:1},{t:'1º trim.'},{t:'2º trim.'},{t:'3º trim.'},{t:'Situação',l:1},{t:'Observação',l:1}],
+    rows.map((r,i)=>`<tr><td>${i+1}</td><td class="l">${escHtml(r.st.name)}</td><td class="${r.sit.lost.includes(1)?'t-bad':''}">${repSitCel(r.sit,1)}</td><td class="${r.sit.lost.includes(2)?'t-bad':''}">${repSitCel(r.sit,2)}</td><td class="${r.sit.lost.includes(3)?'t-bad':''}">${repSitCel(r.sit,3)}</td><td class="l ${SIT_INFO[r.sit.cod].cls}"><b>${SIT_INFO[r.sit.cod].t}</b></td><td class="l">${r.sit.det}</td></tr>`), 'rp-list');
+  return rpWrap(rpHeader('Situação dos alunos — '+escHtml(subj), escHtml(turma)+' · '+cd.students.length+' aluno'+(cd.students.length===1?'':'s')+' · '+escHtml(effectiveMesAno(cd))),
+    rpSec('Resumo', `<div class="fm-read"><p>${resumo||'Sem alunos.'}</p></div>`) + rpSec('Alunos por situação', body) +
+    `<div class="rp-foot"><b>Notas:</b> ${REP_SIT_NOTA}${OER_REGRA_TXT}</div>`);
+}
+
+// Listagem por TURMA: alunos com disciplina em Recuperação final e/ou com possibilidade de progressão que
+// depende, necessariamente, de 60% no 3º trimestre.
+function repListaTurmaPage(cd, className){
+  cd.meta = cd.meta || {};
+  const turma = shortTurmaLabel(className);
+  const subs = cd.subjects.map((name,idx)=>({name,idx})).filter(s=>!isLiteratura(s.name));
+  const all = cd.students.map(st=>{
+    const rec = [], pc = [];
+    subs.forEach(s=>{ const sit = oerSituacao(subjectCalc(st.subjects[s.idx]));
+      if(sit.cod==='REC') rec.push({name:s.name, sit}); else if(sit.cod==='POSS_C') pc.push({name:s.name, sit}); });
+    return {st, rec, pc};
+  });
+  const lista = all.filter(r=>r.rec.length || r.pc.length)
+    .sort((a,b)=> b.rec.length-a.rec.length || b.pc.length-a.pc.length || a.st.name.localeCompare(b.st.name));
+  const nRec = all.filter(r=>r.rec.length).length, nPc = all.filter(r=>r.pc.length).length;
+  const item = x => `${escHtml(x.name)} <small>(${repSitTrio(x.sit)})</small>`;
+  const body = lista.length ? rpTable([{t:'Nº'},{t:'Aluno',l:1},{t:'Em Recuperação final (1º / 2º / 3º trim.)',l:1},{t:'Possibilidade de progressão: precisa, necessariamente, de 60% no 3º trim.',l:1}],
+    lista.map((r,i)=>`<tr><td>${i+1}</td><td class="l">${escHtml(r.st.name)}</td><td class="l ${r.rec.length?'t-bad':''}">${r.rec.length ? r.rec.map(item).join('; ') : '—'}</td><td class="l ${r.pc.length?'t-mid':''}">${r.pc.length ? r.pc.map(item).join('; ') : '—'}</td></tr>`), 'rp-list')
+    : `<div class="rp-ok">Nenhum aluno em Recuperação final ou dependendo de 60% no 3º trimestre.</div>`;
+  const resumo = `<b>${nRec}</b> aluno${nRec===1?'':'s'} com disciplina em Recuperação final &nbsp;·&nbsp; <b>${nPc}</b> aluno${nPc===1?'':'s'} com possibilidade de progressão que exige 60% no 3º trim. &nbsp;·&nbsp; <b>${cd.students.length-lista.length}</b> sem pendência a acompanhar`;
+  return rpWrap(rpHeader('Situação dos alunos — Recuperação final e possibilidade de progressão', escHtml(turma)+' · '+cd.students.length+' aluno'+(cd.students.length===1?'':'s')+' · '+escHtml(effectiveMesAno(cd))),
+    rpSec('Resumo', `<div class="fm-read"><p>${resumo}</p></div>`) + rpSec('Alunos', body) +
+    `<div class="rp-foot"><b>Notas:</b> ${REP_SIT_NOTA}${OER_REGRA_TXT}</div>`);
+}
+
 // ---------- montagem / pré-visualização / impressão ----------
 function repCurrentVars(){
   if(repState.modo==='turma') return repState.varsTur;
@@ -3364,7 +3472,18 @@ function repCurrentVars(){
   return repState.varsInd;
 }
 function repBuild(){
-  const S = repState, V = repCurrentVars();
+  const S = repState;
+  if(S.modo==='listaTurma' || S.modo==='listaDisc'){
+    const nm = Object.keys(currentClasses).sort().filter(n=>S.turmas.has(n));
+    if(!nm.length){ alert('Selecione ao menos uma turma.'); return null; }
+    if(S.modo==='listaTurma') return nm.map(n=>repListaTurmaPage(currentClasses[n], n)).join('');
+    let out = '';
+    nm.forEach(n=>{ const cd = currentClasses[n];
+      cd.subjects.forEach((sn,i)=>{ if(isLiteratura(sn)) return; if(S.discs!==null && !S.discs.has(sn)) return; out += repListaDiscPage(cd, n, i); }); });
+    if(!out){ alert('Nenhuma disciplina selecionada nas turmas escolhidas.'); return null; }
+    return out;
+  }
+  const V = repCurrentVars();
   if(!V.size){ alert('Marque ao menos uma variável para o relatório.'); return null; }
   if(S.modo==='turma'){
     const names = Object.keys(currentClasses).sort().filter(n=>S.turmas.has(n));
@@ -3423,7 +3542,10 @@ function renderReportsTab(){
   S.alunos = new Set([...S.alunos].filter(i=>cdA.students[i]));
   const chg = fn => (...a)=>{ fn(...a); S.preview = null; renderReportsTab(); };
 
-  const scopeNames = S.modo==='turma' ? names.filter(n=>S.turmas.has(n)) : [S.turmaAluno];
+  const isLista = S.modo==='listaTurma' || S.modo==='listaDisc';
+  const isMulti = S.modo==='turma' || isLista;
+  const scopeNames = isMulti ? names.filter(n=>S.turmas.has(n)) : [S.turmaAluno];
+  const discList = [...new Set(scopeNames.flatMap(n=>currentClasses[n].subjects.filter(sn=>!isLiteratura(sn))))].sort((a,b)=>a.localeCompare(b));
   const triUnion = [0,1,2].filter(i=> scopeNames.some(n=>triHasData(currentClasses[n], i)));
   if(S.tri!=='auto' && S.tri!=='ALL' && !triUnion.includes(S.tri)) S.tri = 'auto';
 
@@ -3433,9 +3555,11 @@ function renderReportsTab(){
     ${modeCard('turma','Relatório da turma','Indicadores, resultado por disciplina, alunos em Recuperação final, acompanhamento e destaques')}
     ${modeCard('ind','Individual — família e aluno (recomendado)','Uma folha A4 por aluno, em linguagem simples e com gráficos, para a família e o aluno acompanharem e analisarem o trimestre')}
     ${modeCard('indp','Individual — detalhado (escolher variáveis)','Modelo em tabelas para conselho de classe e coordenação, só com as informações que você marcar')}
+    ${modeCard('listaTurma','Listagem por turma — Recuperação final e possibilidade','Alunos da turma com disciplinas em Recuperação final e com possibilidade de progressão (precisa de 60% no 3º trimestre)')}
+    ${modeCard('listaDisc','Listagem por disciplina/turma — situação dos alunos','Uma folha por disciplina em cada turma, com todos os alunos ordenados por situação (Recuperação final, possibilidade e progressão)')}
   </div></div>`;
 
-  if(S.modo==='turma'){
+  if(isMulti){
     const allOn = names.every(n=>S.turmas.has(n));
     h += `<div class="rep-card"><h3>2 · Turmas</h3><div class="oer-tab-controls" style="margin:0">
       <label class="oer-chip all${allOn?' on':''}"><input type="checkbox" id="repAllCb" ${allOn?'checked':''}> Todas</label>
@@ -3451,13 +3575,25 @@ function renderReportsTab(){
       <div class="rep-alunos" id="repAlunos">${ord.map(o=>`<label class="rep-al${S.alunos.has(o.i)?' on':''}" data-nome="${escHtml(o.st.name.toLowerCase())}"><input type="checkbox" class="rep-al-cb" value="${o.i}" ${S.alunos.has(o.i)?'checked':''}> ${escHtml(o.st.name)}</label>`).join('')}</div></div>`;
   }
 
-  h += `<div class="rep-card"><h3>3 · Trimestre de referência</h3><div class="rep-row"><select id="repTri" class="tri-select">
+  if(!isLista) h += `<div class="rep-card"><h3>3 · Trimestre de referência</h3><div class="rep-row"><select id="repTri" class="tri-select">
       <option value="auto" ${S.tri==='auto'?'selected':''}>Último trimestre com notas (recomendado para fim de trimestre)</option>
       ${triUnion.map(i=>`<option value="${i}" ${S.tri===i?'selected':''}>${i+1}º trimestre</option>`).join('')}
       <option value="ALL" ${S.tri==='ALL'?'selected':''}>Acumulado do ano (todos os trimestres lado a lado)</option>
     </select></div></div>`;
 
-  if(S.modo==='ind'){
+  if(isLista){
+    const inc = S.modo==='listaTurma'
+      ? ['Por turma: alunos com disciplina em Recuperação final (com o % do 1º, 2º e 3º trimestres)','Alunos com possibilidade de progressão que depende, necessariamente, de 60% no 3º trimestre','Resumo com o número de alunos em cada situação e quantos estão sem pendência']
+      : ['Uma folha por disciplina em cada turma selecionada, com todos os alunos da turma','Situação de cada aluno: Recuperação final, possibilidade (precisa ou basta 60% no 3º trim.), progressão garantida ou sem notas suficientes','Ordenação por situação (Recuperação final primeiro) e depois por nome, com o % de cada trimestre'];
+    if(S.modo==='listaDisc'){
+      const dOn = S.discs===null;
+      h += `<div class="rep-card"><h3>3 · Disciplinas</h3><div class="oer-tab-controls" style="margin:0">
+        <label class="oer-chip all${dOn?' on':''}"><input type="checkbox" id="repDiscAllCb" ${dOn?'checked':''}> Todas</label>
+        ${discList.map(d=>{ const on = dOn || S.discs.has(d); return `<label class="oer-chip${on?' on':''}"><input type="checkbox" class="rep-disc-cb" value="${escHtml(d)}" ${on?'checked':''}> ${escHtml(titleCase(d))}</label>`; }).join('')}
+      </div></div>`;
+    }
+    h += `<div class="rep-card"><h3>${S.modo==='listaDisc'?'3b':'3'} · O que a listagem inclui</h3><ul class="rep-inc">${inc.map(x=>`<li>${x}</li>`).join('')}</ul><div class="rep-hint">Regra: Recuperação final = 1º e 2º trimestres abaixo de 60%, ou 3º trimestre abaixo de 60%. Passa quem alcança 60% no 3º e tem média em pelo menos um dos dois primeiros.</div></div>`;
+  } else if(S.modo==='ind'){
     const inc = ['Resumo: frase de leitura, aproveitamento geral e situação nas disciplinas','Gráfico por disciplina, com a média (60%) e a comparação com a turma','Gráfico de evolução ao longo dos trimestres (aluno × turma)','Gráfico dos pontos necessários no 3º trimestre (Recuperação final), quando houver risco','Leitura do trimestre e orientações em linguagem simples','Espaço para o aluno analisar e planejar; observações do professor; ciência do responsável e assinaturas'];
     h += `<div class="rep-card"><h3>4 · O que o modelo padrão inclui</h3><ul class="rep-inc">${inc.map(x=>`<li>${x}</li>`).join('')}</ul><div class="rep-hint">Quer um modelo em tabelas, escolhendo as informações? Use “Individual — detalhado”.</div></div>`;
   } else {
@@ -3472,14 +3608,14 @@ function renderReportsTab(){
       <div class="rep-vars">${groups.map(g=>`<div class="rep-vg"><div class="rep-vg-t">${g.g}</div>${g.items.map(i=>`<label class="rep-v"><input type="checkbox" class="rep-var-cb" value="${i[0]}" ${cur.has(i[0])?'checked':''}> ${i[1]}</label>`).join('')}</div>`).join('')}</div></div>`;
   }
 
-  h += `<div class="rep-card"><h3>${S.modo==='ind'?'5':'5'} · Cabeçalho, nome da escola e logo</h3>
+  h += `<div class="rep-card"><h3>${isLista?'4':'5'} · Cabeçalho, nome da escola e logo</h3>
     <div class="rep-row"><label style="flex:1">Escola: <input type="text" id="repEscola" class="rep-filtro" style="width:100%" value="${escHtml(schoolName())}"></label></div>
     <div class="rep-row"><img class="rep-logo-prev" src="${getLogo()}" alt="Logo da escola">
       <label class="print-btn" style="cursor:pointer">Trocar logo<input type="file" id="repLogoFile" accept="image/*" style="display:none"></label>
       <button class="print-btn" id="repLogoReset">Usar logo padrão</button>
       <span class="rep-hint">A logo aparece em todos os documentos impressos (relatórios, cards de Recuperação final, tabelas e listagens).</span></div></div>`;
 
-  h += `<div class="rep-card"><h3>6 · Recado opcional</h3><textarea id="repMsg" class="rep-msg-in" rows="2" placeholder="Opcional: aviso ou recado da coordenação, impresso em todos os relatórios gerados.">${escHtml(S.msg)}</textarea></div>`;
+  h += `<div class="rep-card"><h3>${isLista?'5':'6'} · Recado opcional</h3><textarea id="repMsg" class="rep-msg-in" rows="2" placeholder="Opcional: aviso ou recado da coordenação, impresso em todos os relatórios gerados.">${escHtml(S.msg)}</textarea></div>`;
   h += `<div class="rep-actions"><button class="print-btn" id="repPreviewBtn">👁 Pré-visualizar</button><button class="print-btn" id="repPrintBtn">🖶 Imprimir relatório</button></div>
     <div id="repPreview" class="rep-preview"></div>`;
   main.innerHTML = h;
@@ -3508,7 +3644,14 @@ function renderReportsTab(){
     document.getElementById('repMarkNone').onclick = chg(()=>{ S.alunos = new Set(); });
   }
   const tri = document.getElementById('repTri');
-  tri.onchange = chg(()=>{ S.tri = (tri.value==='auto'||tri.value==='ALL') ? tri.value : Number(tri.value); });
+  if(tri) tri.onchange = chg(()=>{ S.tri = (tri.value==='auto'||tri.value==='ALL') ? tri.value : Number(tri.value); });
+  const dAll = document.getElementById('repDiscAllCb');
+  if(dAll) dAll.onchange = chg(()=>{ S.discs = dAll.checked ? null : new Set(); });
+  main.querySelectorAll('.rep-disc-cb').forEach(cb=> cb.onchange = chg(()=>{
+    const cur = S.discs===null ? new Set(discList) : new Set(S.discs);
+    cb.checked ? cur.add(cb.value) : cur.delete(cb.value);
+    S.discs = (cur.size>=discList.length) ? null : cur;
+  }));
   main.querySelectorAll('.rep-preset').forEach(b=> b.onclick = chg(()=>{
     const k = b.dataset.p;
     if(S.modo==='turma'){ S.turPreset = k; S.varsTur = new Set(REP_TUR_PRESETS[k].vars); }
