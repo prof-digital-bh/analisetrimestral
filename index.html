@@ -3391,17 +3391,17 @@ function repComparativoPage(names, V){
   return rpWrap(rpHeader('Quadro comparativo entre as turmas', 'Turmas selecionadas: '+names.length+' · '+escHtml(effectiveMesAno(currentClasses[names[0]]))), rpSec('Comparativo', body)+`<div class="rp-foot"><b>Notas:</b> “Notas na média” = % de notas (alunos × disciplinas) que atingiram a média no trimestre de referência de cada turma. Literatura não é considerada. ${RP_TINT_NOTE}</div>`);
 }
 
-// ---------- LISTAGENS DE SITUAÇÃO (Recuperação final e possibilidade de progressão) ----------
+// ---------- LISTAGENS DE SITUAÇÃO (Recuperação final e possibilidade de Recuperação final) ----------
 // Situação do aluno em UMA disciplina:
 //  REC    = Recuperação final (3º abaixo de 60%, ou 1º e 2º abaixo de 60%)
-//  POSS_C = possibilidade de progressão, mas precisa, necessariamente, de 60% no 3º (perdeu a média em um dos dois primeiros)
-//  POSS_A = possibilidade de progressão, basta alcançar 60% no 3º (média nos dois primeiros)
+//  POSS_C = possibilidade de Recuperação final: perdeu a média em um dos dois primeiros e precisa, necessariamente, de 60% no 3º
+//  POSS_A = provável progressão (sem risco de Recuperação final): média nos dois primeiros, basta alcançar 60% no 3º
 //  PROG   = progressão garantida (3º na média + média em pelo menos um dos dois primeiros)
 //  ND     = sem notas suficientes para classificar
 const SIT_INFO = {
-  REC:    {ord:0, t:'Recuperação final', cls:'t-bad'},
-  POSS_C: {ord:1, t:'Possibilidade: precisa de 60% no 3º trim.', cls:'t-mid'},
-  POSS_A: {ord:2, t:'Possibilidade: basta 60% no 3º trim.', cls:''},
+  REC:    {ord:0, t:'Em Recuperação final', cls:'t-bad'},
+  POSS_C: {ord:1, t:'Possibilidade de Recuperação final: precisa de 60% no 3º trim.', cls:'t-mid'},
+  POSS_A: {ord:2, t:'Provável progressão: basta 60% no 3º trim.', cls:''},
   PROG:   {ord:3, t:'Progressão garantida', cls:''},
   ND:     {ord:4, t:'Sem notas suficientes', cls:'na'}
 };
@@ -3417,8 +3417,8 @@ function oerSituacao(calc){
     return {...base, cod:'ND', det:'Falta lançar a nota do 1º ou do 2º trimestre.'};
   }
   const o = obs3Info(calc);
-  if(o && o.tipo==='A') return {...base, cod:'POSS_A', det:'Precisa apenas alcançar 60% no 3º trim.'};
-  if(o && o.tipo==='C') return {...base, cod:'POSS_C', det:'Precisa, necessariamente, de 60% no 3º trim.; abaixo disso, Recuperação final.'};
+  if(o && o.tipo==='A') return {...base, cod:'POSS_A', det:'Média nos dois primeiros trimestres: não corre risco de Recuperação final; precisa apenas alcançar 60% no 3º trim. para progredir.'};
+  if(o && o.tipo==='C') return {...base, cod:'POSS_C', det:'Perdeu a média em um dos dois primeiros trimestres: precisa, necessariamente, de 60% no 3º trim.; abaixo disso, ficará em Recuperação final.'};
   return {...base, cod:'ND', det:'Faltam notas para classificar.'};
 }
 const repSitCel = (sit,k) => { const v = sit['t'+k]; if(!oerHas(v)) return '–'; return sit.lost.includes(k) ? `<b>${v}</b>` : v; };
@@ -3440,7 +3440,7 @@ function repListaDiscPage(cd, className, subjIdx){
     `<div class="rp-foot"><b>Notas:</b> ${REP_SIT_NOTA}${OER_REGRA_TXT}</div>`);
 }
 
-// Listagem por TURMA: alunos com disciplina em Recuperação final e/ou com possibilidade de progressão que
+// Listagem por TURMA: alunos com disciplina em Recuperação final e/ou com possibilidade de Recuperação final que
 // depende, necessariamente, de 60% no 3º trimestre.
 function repListaTurmaPage(cd, className){
   cd.meta = cd.meta || {};
@@ -3456,11 +3456,11 @@ function repListaTurmaPage(cd, className){
     .sort((a,b)=> b.rec.length-a.rec.length || b.pc.length-a.pc.length || a.st.name.localeCompare(b.st.name));
   const nRec = all.filter(r=>r.rec.length).length, nPc = all.filter(r=>r.pc.length).length;
   const item = x => `${escHtml(x.name)} <small>(${repSitTrio(x.sit)})</small>`;
-  const body = lista.length ? rpTable([{t:'Nº'},{t:'Aluno',l:1},{t:'Em Recuperação final (1º / 2º / 3º trim.)',l:1},{t:'Possibilidade de progressão: precisa, necessariamente, de 60% no 3º trim.',l:1}],
+  const body = lista.length ? rpTable([{t:'Nº'},{t:'Aluno',l:1},{t:'Em Recuperação final (1º / 2º / 3º trim.)',l:1},{t:'Possibilidade de Recuperação final: precisa, necessariamente, de 60% no 3º trim.',l:1}],
     lista.map((r,i)=>`<tr><td>${i+1}</td><td class="l">${escHtml(r.st.name)}</td><td class="l ${r.rec.length?'t-bad':''}">${r.rec.length ? r.rec.map(item).join('; ') : '—'}</td><td class="l ${r.pc.length?'t-mid':''}">${r.pc.length ? r.pc.map(item).join('; ') : '—'}</td></tr>`), 'rp-list')
-    : `<div class="rp-ok">Nenhum aluno em Recuperação final ou dependendo de 60% no 3º trimestre.</div>`;
-  const resumo = `<b>${nRec}</b> aluno${nRec===1?'':'s'} com disciplina em Recuperação final &nbsp;·&nbsp; <b>${nPc}</b> aluno${nPc===1?'':'s'} com possibilidade de progressão que exige 60% no 3º trim. &nbsp;·&nbsp; <b>${cd.students.length-lista.length}</b> sem pendência a acompanhar`;
-  return rpWrap(rpHeader('Situação dos alunos — Recuperação final e possibilidade de progressão', escHtml(turma)+' · '+cd.students.length+' aluno'+(cd.students.length===1?'':'s')+' · '+escHtml(effectiveMesAno(cd))),
+    : `<div class="rp-ok">Nenhum aluno em Recuperação final nem com possibilidade de Recuperação final.</div>`;
+  const resumo = `<b>${nRec}</b> aluno${nRec===1?'':'s'} com disciplina em Recuperação final &nbsp;·&nbsp; <b>${nPc}</b> aluno${nPc===1?'':'s'} com possibilidade de Recuperação final (precisa de 60% no 3º trim.) &nbsp;·&nbsp; <b>${cd.students.length-lista.length}</b> sem pendência a acompanhar`;
+  return rpWrap(rpHeader('Situação dos alunos — Recuperação final e possibilidade de Recuperação final', escHtml(turma)+' · '+cd.students.length+' aluno'+(cd.students.length===1?'':'s')+' · '+escHtml(effectiveMesAno(cd))),
     rpSec('Resumo', `<div class="fm-read"><p>${resumo}</p></div>`) + rpSec('Alunos', body) +
     `<div class="rp-foot"><b>Notas:</b> ${REP_SIT_NOTA}${OER_REGRA_TXT}</div>`);
 }
@@ -3555,8 +3555,8 @@ function renderReportsTab(){
     ${modeCard('turma','Relatório da turma','Indicadores, resultado por disciplina, alunos em Recuperação final, acompanhamento e destaques')}
     ${modeCard('ind','Individual — família e aluno (recomendado)','Uma folha A4 por aluno, em linguagem simples e com gráficos, para a família e o aluno acompanharem e analisarem o trimestre')}
     ${modeCard('indp','Individual — detalhado (escolher variáveis)','Modelo em tabelas para conselho de classe e coordenação, só com as informações que você marcar')}
-    ${modeCard('listaTurma','Listagem por turma — Recuperação final e possibilidade','Alunos da turma com disciplinas em Recuperação final e com possibilidade de progressão (precisa de 60% no 3º trimestre)')}
-    ${modeCard('listaDisc','Listagem por disciplina/turma — situação dos alunos','Uma folha por disciplina em cada turma, com todos os alunos ordenados por situação (Recuperação final, possibilidade e progressão)')}
+    ${modeCard('listaTurma','Listagem por turma — Recuperação final e possibilidade de Recuperação final','Alunos da turma que já estão em Recuperação final e os que podem ir para ela (perderam a média em um dos dois primeiros e precisam de 60% no 3º trimestre)')}
+    ${modeCard('listaDisc','Listagem por disciplina/turma — situação dos alunos','Uma folha por disciplina em cada turma, com todos os alunos ordenados por situação (Recuperação final, possibilidade de Recuperação final e demais)')}
   </div></div>`;
 
   if(isMulti){
@@ -3583,8 +3583,8 @@ function renderReportsTab(){
 
   if(isLista){
     const inc = S.modo==='listaTurma'
-      ? ['Por turma: alunos com disciplina em Recuperação final (com o % do 1º, 2º e 3º trimestres)','Alunos com possibilidade de progressão que depende, necessariamente, de 60% no 3º trimestre','Resumo com o número de alunos em cada situação e quantos estão sem pendência']
-      : ['Uma folha por disciplina em cada turma selecionada, com todos os alunos da turma','Situação de cada aluno: Recuperação final, possibilidade (precisa ou basta 60% no 3º trim.), progressão garantida ou sem notas suficientes','Ordenação por situação (Recuperação final primeiro) e depois por nome, com o % de cada trimestre'];
+      ? ['Por turma: alunos com disciplina em Recuperação final (com o % do 1º, 2º e 3º trimestres)','Alunos com possibilidade de Recuperação final: perderam a média em um dos dois primeiros trimestres e precisam, necessariamente, de 60% no 3º','Resumo com o número de alunos em cada situação e quantos estão sem pendência']
+      : ['Uma folha por disciplina em cada turma selecionada, com todos os alunos da turma','Situação de cada aluno: em Recuperação final, possibilidade de Recuperação final (precisa de 60% no 3º trim.), provável progressão (média nos dois primeiros), progressão garantida ou sem notas suficientes','Ordenação por situação (Recuperação final primeiro) e depois por nome, com o % de cada trimestre'];
     if(S.modo==='listaDisc'){
       const dOn = S.discs===null;
       h += `<div class="rep-card"><h3>3 · Disciplinas</h3><div class="oer-tab-controls" style="margin:0">
