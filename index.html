@@ -320,7 +320,18 @@ body{
 
   /* Impressões dedicadas: listagem por disciplina (para professores) e cards de
      risco de todas as turmas. Cada uma some por padrão e só aparece quando o
-     JS marca o <body> com a classe correspondente antes de chamar print(). */
+     JS marca o <body>
+<div id="loginGate" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+  <form class="box" id="loginForm" autocomplete="off">
+    <img id="loginLogo" alt="">
+    <h1 id="loginTitle">Painel de Boletins</h1>
+    <p>E.M. Albertina Alves do Nascimento<br>Digite o código de acesso para entrar</p>
+    <input type="password" id="loginCode" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="••••••••" autofocus>
+    <button type="submit" id="loginBtn">Entrar</button>
+    <div class="err" id="loginErr" aria-live="polite"></div>
+  </form>
+</div>
+ com a classe correspondente antes de chamar print(). */
   body.print-mode-subjects .app{ display:none !important; }
   body.print-mode-subjects .print-subject-doc{ display:block !important; }
   body.print-mode-cards .app{ display:none !important; }
@@ -695,6 +706,26 @@ body{
   .print-report-doc .rp-page{page-break-after:always; break-after:page;}
   .print-report-doc .rp-page:last-child{page-break-after:auto; break-after:auto;}
 }
+</style>
+<script>try{if(sessionStorage.getItem('albertina:auth')!=='1')document.documentElement.classList.add('locked');}catch(e){document.documentElement.classList.add('locked');}</script>
+<style>
+html.locked .app{display:none!important}
+#loginGate{display:none;position:fixed;inset:0;z-index:99999;align-items:center;justify-content:center;padding:20px;
+  background:linear-gradient(135deg,#1E2A2E 0%,#2F6F63 100%);font-family:Inter,system-ui,sans-serif}
+html.locked #loginGate{display:flex}
+#loginGate .box{background:#fff;border-radius:16px;padding:32px 28px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center}
+#loginGate img{max-width:72px;max-height:72px;margin-bottom:10px}
+#loginGate h1{font-family:Fraunces,Georgia,serif;font-size:22px;margin:0 0 4px;color:#1E2A2E}
+#loginGate p{margin:0 0 18px;font-size:12.5px;color:#5b6a6f}
+#loginGate input{width:100%;box-sizing:border-box;padding:12px 14px;font-size:20px;letter-spacing:6px;text-align:center;border:1.5px solid #c9d3d0;border-radius:10px;font-family:'JetBrains Mono',monospace;outline:none}
+#loginGate input:focus{border-color:#2F6F63;box-shadow:0 0 0 3px #DCEAE3}
+#loginGate button{margin-top:12px;width:100%;padding:12px;border:0;border-radius:10px;background:#2F6F63;color:#fff;font-size:14px;font-weight:600;cursor:pointer}
+#loginGate button:hover{background:#25594f}
+#loginGate button:disabled{opacity:.6;cursor:not-allowed}
+#loginGate .err{min-height:18px;margin-top:10px;font-size:12.5px;color:#b3261e;font-weight:500}
+#logoutBtn{margin-top:8px;width:100%;padding:6px 0;font-size:11px;border:1px solid #c9d3d0;border-radius:8px;background:transparent;color:#5b6a6f;cursor:pointer}
+#logoutBtn:hover{background:#f1f4f3}
+@media print{#loginGate,#logoutBtn{display:none!important}}
 </style>
 </head>
 <body>
@@ -3688,6 +3719,50 @@ function renderReportsTab(){
   renderMain();
 })();
 try{ document.getElementById('brandLogo').src = getLogo(); }catch(e){}
+</script>
+<script>
+// ---------- ACESSO AO SISTEMA (código de entrada) ----------
+(function(){
+  const HASH_SHA = '2929315305f141e39a37eb11ffa8950fcb8e8e65d4d1c2c491ffb3b1a9be19e0';   // SHA-256 do código (o código em si não fica no arquivo)
+  const HASH_FB  = '827191811';   // alternativa para navegadores sem crypto.subtle
+  const KEY = 'albertina:auth';
+  const root = document.documentElement;
+  const $ = id => document.getElementById(id);
+  async function hash(s){
+    if(window.crypto && crypto.subtle){
+      const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+      return {sha:[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')};
+    }
+    let h=5381; for(const ch of s) h=((h*33)^ch.charCodeAt(0))>>>0;
+    return {fb:String(h)};
+  }
+  try{ const lg=document.getElementById('brandLogo'); if(lg && lg.src) $('loginLogo').src=lg.src; else $('loginLogo').style.display='none'; }catch(e){}
+  let fails=0, lockedUntil=0;
+  $('loginForm').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const now=Date.now();
+    if(now<lockedUntil){ $('loginErr').textContent='Aguarde '+Math.ceil((lockedUntil-now)/1000)+'s para tentar novamente.'; return; }
+    const h = await hash($('loginCode').value.trim());
+    const ok = h.sha ? h.sha===HASH_SHA : h.fb===HASH_FB;
+    if(ok){
+      try{ sessionStorage.setItem(KEY,'1'); }catch(_){}
+      $('loginErr').textContent=''; $('loginCode').value='';
+      root.classList.remove('locked');
+    }else{
+      fails++; $('loginCode').value=''; $('loginCode').focus();
+      if(fails>=5){ lockedUntil=Date.now()+30000; fails=0; $('loginErr').textContent='Muitas tentativas. Aguarde 30 segundos.'; }
+      else $('loginErr').textContent='Código incorreto.';
+    }
+  });
+  // Botão "Sair" na barra lateral
+  const sb=document.querySelector('.sidebar');
+  if(sb){
+    const b=document.createElement('button'); b.id='logoutBtn'; b.type='button'; b.textContent='🔒 Sair';
+    b.onclick=()=>{ try{sessionStorage.removeItem(KEY);}catch(_){} root.classList.add('locked'); setTimeout(()=>$('loginCode').focus(),50); };
+    sb.appendChild(b);
+  }
+  if(root.classList.contains('locked')) setTimeout(()=>$('loginCode').focus(),50);
+})();
 </script>
 </body>
 </html>
