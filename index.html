@@ -320,18 +320,7 @@ body{
 
   /* Impressões dedicadas: listagem por disciplina (para professores) e cards de
      risco de todas as turmas. Cada uma some por padrão e só aparece quando o
-     JS marca o <body>
-<div id="loginGate" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
-  <form class="box" id="loginForm" autocomplete="off">
-    <img id="loginLogo" alt="">
-    <h1 id="loginTitle">Painel de Boletins</h1>
-    <p>E.M. Albertina Alves do Nascimento<br>Digite o código de acesso para entrar</p>
-    <input type="password" id="loginCode" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="••••••••" autofocus>
-    <button type="submit" id="loginBtn">Entrar</button>
-    <div class="err" id="loginErr" aria-live="polite"></div>
-  </form>
-</div>
- com a classe correspondente antes de chamar print(). */
+     JS marca o <body> com a classe correspondente antes de chamar print(). */
   body.print-mode-subjects .app{ display:none !important; }
   body.print-mode-subjects .print-subject-doc{ display:block !important; }
   body.print-mode-cards .app{ display:none !important; }
@@ -729,6 +718,16 @@ html.locked #loginGate{display:flex}
 </style>
 </head>
 <body>
+<div id="loginGate" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+  <form class="box" id="loginForm" autocomplete="off">
+    <img id="loginLogo" alt="">
+    <h1 id="loginTitle">Painel de Boletins</h1>
+    <p>E.M. Albertina Alves do Nascimento<br>Digite o código de acesso para entrar</p>
+    <input type="password" id="loginCode" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="••••••••" autofocus>
+    <button type="submit" id="loginBtn">Entrar</button>
+    <div class="err" id="loginErr" aria-live="polite"></div>
+  </form>
+</div>
 <div class="app">
   <div class="sidebar">
     <div class="brand"><img id="brandLogo" class="brand-logo" alt="Logo da escola">Boletins<span>Painel de análise trimestral · E.M. Albertina Alves do Nascimento</span></div>
