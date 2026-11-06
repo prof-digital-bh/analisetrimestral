@@ -613,7 +613,11 @@ body{
 .rp-foot .sw.mid{background:#ffeaa0;} .rp-foot .sw.bad{background:#f7b9b0;}
 .rp-wrap{width:100%; border-collapse:collapse;}
 .rp-wrap > thead{display:table-header-group;}
-.rp-wrap > thead > tr > td, .rp-wrap > tbody > tr > td{border:0; padding:0; vertical-align:top;}
+.rp-wrap > tfoot{display:table-footer-group;}
+.rp-credit{margin-top:4px; padding-top:2px; border-top:.6px solid #000; text-align:center; font-size:7pt; line-height:1.25; color:#000;}
+.rp-credit small{font-size:6pt;}
+.rp-c2 .rp-credit{font-size:6.4pt; margin-top:2px; padding-top:1px;} .rp-c2 .rp-credit small{font-size:5.6pt;}
+.rp-wrap > thead > tr > td, .rp-wrap > tbody > tr > td, .rp-wrap > tfoot > tr > td{border:0; padding:0; vertical-align:top;}
 /* densidade automática do relatório individual (muitas disciplinas / muitas em risco): continua cabendo em 1 folha */
 /* ===== visual moderno do modelo família e aluno: cantos arredondados, fundos claros, ótimo em P&B ===== */
 .fm .rp-hdr{border:1.3px solid #222; border-radius:14px; padding:5px 12px; margin-bottom:5px; gap:12px;}
@@ -684,6 +688,8 @@ body{
   .doc-brand-txt{flex:1; min-width:0;}
   .doc-brand-school{font-family:'Fraunces',serif; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:.02em; color:#000; line-height:1.15;}
   .doc-brand-date{font-size:9px; color:#222; white-space:nowrap;}
+  .doc-brand-src{font-size:8px; color:#222; line-height:1.2; margin-top:1px;}
+  .oer-card-src{font-size:6.5pt; color:#333; margin-top:3px; line-height:1.2;}
   .ct-page .doc-brand{margin-bottom:3px; padding-bottom:2px;}
   .ct-page .doc-logo{height:8mm;}
   .ct-page .doc-brand-school{font-size:11px;}
@@ -1556,6 +1562,7 @@ function printOerCards(){
       <div class="oer-card-note">Pela regra da escola, fica em Recuperação final o aluno que <b>perde a média (abaixo de 60%) no 1º e no 2º trimestres</b> — mesmo que alcance 60% no 3º — ou que fica <b>abaixo de 60% no 3º trimestre</b>. Nas disciplinas acima isso aconteceu (em <b>negrito</b>, o trimestre com média perdida). Quando o 3º trimestre ainda não foi lançado, o aluno precisa alcançar <b>60% ou mais</b> nele. Passa de ano quem alcança 60% no 3º e tem média em pelo menos um dos dois primeiros.</div>
       <div class="oer-card-alert"><b>A Recuperação final é a última oportunidade</b>: não há nova chance depois dela. Por isso, esta situação <b>exige mudança de rotina e foco nos estudos desde já</b>.</div>${oerAlertasNivel(st)}${oerCardObs(st)}
       ${via === 'Via da escola' ? `<div class="oer-card-sign">Ciente do responsável: ____________________________ &nbsp;Data: ____/____/______</div>` : ''}
+    <div class="oer-card-src">Fonte dos dados: ${escHtml(FONTE_DADOS)}</div>
     </div>`;
     return `<div class="oer-pair">${one('Via da família')}<div class="oer-cut" aria-hidden="true"><span>✂</span></div>${one('Via da escola')}</div>`;
   });
@@ -2941,9 +2948,10 @@ function schoolName(){ const c = loadGlobalConfig(); return c.escola || 'ESCOLA 
 function escHtml(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 (function preloadLogo(){ try{ const i = new Image(); i.src = getLogo(); }catch(e){} })();
 
+const FONTE_DADOS = 'Desempenho Escolar EMAAN 2026 - Inforede';
 function brandBandHtml(){
   const hoje = new Date().toLocaleDateString('pt-BR');
-  return `<div class="doc-brand"><img class="doc-logo" src="${getLogo()}" alt="Logo da escola"><div class="doc-brand-txt"><div class="doc-brand-school">${escHtml(schoolName())}</div></div><div class="doc-brand-date">Emitido em ${hoje}</div></div>`;
+  return `<div class="doc-brand"><img class="doc-logo" src="${getLogo()}" alt="Logo da escola"><div class="doc-brand-txt"><div class="doc-brand-school">${escHtml(schoolName())}</div><div class="doc-brand-src">Fonte dos dados: ${escHtml(FONTE_DADOS)}</div></div><div class="doc-brand-date">Emitido em ${hoje}</div></div>`;
 }
 // Antes de qualquer impressão (botão ou Ctrl+P) garante a faixa com logo + nome da escola no topo
 // de cada folha dos documentos dedicados e da tela atual. Os cards de Recuperação final já trazem a logo no próprio card.
@@ -3070,7 +3078,8 @@ function rpHeader(title, sub){
   return `<div class="rp-hdr"><img class="rp-logo" src="${getLogo()}" alt="Logo da escola"><div class="rp-hdr-mid"><div class="rp-school">${escHtml(schoolName())}</div><div class="rp-title">${title}</div>${sub?`<div class="rp-sub">${sub}</div>`:''}</div><div class="rp-hdr-right">Emitido em<br><b>${hoje}</b></div></div>`;
 }
 // Relatórios de várias folhas: o cabeçalho (logo + nome da escola) fica no <thead> e se repete em toda folha impressa.
-const rpWrap = (hdr, body) => `<section class="rp-page"><table class="rp-wrap"><thead><tr><td>${hdr}</td></tr></thead><tbody><tr><td>${body}</td></tr></tbody></table></section>`;
+const rpCredit = () => `<div class="rp-credit">Fonte dos dados: ${escHtml(FONTE_DADOS)}<br>Produzido por: Prof. Everton Correa Alves / GEOGRAFIA - <small>(everton.alves@edu.contagem.mg.gov.br)</small></div>`;
+const rpWrap = (hdr, body) => `<section class="rp-page"><table class="rp-wrap"><thead><tr><td>${hdr}</td></tr></thead><tbody><tr><td>${body}</td></tr></tbody><tfoot><tr><td>${rpCredit()}</td></tr></tfoot></table></section>`;
 const rpSec = (title, body) => `<div class="rp-sec"><div class="rp-sec-t">${title}</div>${body}</div>`;
 function rpTable(heads, rows, cls){
   return `<table class="rp-table ${cls||''}"><thead><tr>${heads.map(h=>`<th${h.l?' class="l"':''}>${h.t}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
@@ -3194,7 +3203,7 @@ function repIndividualPage(cd, className, st, V, t){
   const foot = `<div class="rp-foot"><b>Notas:</b> Todos os valores são aproveitamento (%); média = 60%. ${RP_TINT_NOTE} “–” = sem nota. Literatura não exibida.</div>`;
   const nRows = data.length + data.filter(d=>d.oer).length; // disciplinas + linhas do quadro de Recuperação final
   const dens = nRows>=17 ? ' rp-c2' : (nRows>=12 ? ' rp-c1' : ''); // compacta sozinho p/ manter 1 folha por aluno
-  return `<section class="rp-page${dens}">${rpHeader('Relatório individual do aluno', escHtml(turma)+' · '+repTriNome(t)+' · '+escHtml(effectiveMesAno(cd)))}${parts.join('')}${foot}</section>`;
+  return `<section class="rp-page${dens}">${rpHeader('Relatório individual do aluno', escHtml(turma)+' · '+repTriNome(t)+' · '+escHtml(effectiveMesAno(cd)))}${parts.join('')}${foot}${rpCredit()}</section>`;
 }
 
 // ---------- relatório individual para FAMÍLIA e ALUNO (uma folha A4, com gráficos) ----------
@@ -3340,7 +3349,7 @@ function repFamiliaPage(cd, className, st, t){
   parts.push(rpAssin(cd.meta && cd.meta.professor));
   const foot = `<div class="rp-foot"><b>Como ler:</b> a linha tracejada marca a média (60% dos pontos) e o losango preto, a média da turma.  Literatura não é exibida.</div>`;
   const dens = (n>=14 || (n>=10 && risk.length>=8)) ? ' rp-c2' : (n>=11 ? ' rp-c1' : '');
-  return `<section class="rp-page fm${dens}">${rpHeader('Acompanhamento do aluno — leitura para a família e o aluno', escHtml(turma)+' · '+repTriNome(t)+' · '+escHtml(effectiveMesAno(cd)))}${parts.join('')}${foot}</section>`;
+  return `<section class="rp-page fm${dens}">${rpHeader('Acompanhamento do aluno — leitura para a família e o aluno', escHtml(turma)+' · '+repTriNome(t)+' · '+escHtml(effectiveMesAno(cd)))}${parts.join('')}${foot}${rpCredit()}</section>`;
 }
 
 // ---------- relatório da turma ----------
@@ -3486,8 +3495,8 @@ function repListaTurmaPage(cd, className){
     .sort((a,b)=> b.rec.length-a.rec.length || b.pc.length-a.pc.length || a.st.name.localeCompare(b.st.name));
   const nRec = all.filter(r=>r.rec.length).length, nPc = all.filter(r=>r.pc.length).length;
   const item = x => `${escHtml(x.name)} <small>(${repSitTrio(x.sit)})</small>`;
-  const body = lista.length ? rpTable([{t:'Nº'},{t:'Aluno',l:1},{t:'Em Recuperação final (1º / 2º / 3º trim.)',l:1},{t:'Possibilidade de Recuperação final: precisa, necessariamente, de 60% no 3º trim.',l:1}],
-    lista.map((r,i)=>`<tr><td>${i+1}</td><td class="l">${escHtml(r.st.name)}</td><td class="l ${r.rec.length?'t-bad':''}">${r.rec.length ? r.rec.map(item).join('; ') : '—'}</td><td class="l ${r.pc.length?'t-mid':''}">${r.pc.length ? r.pc.map(item).join('; ') : '—'}</td></tr>`), 'rp-list')
+  const body = lista.length ? rpTable([{t:'Nº'},{t:'Aluno',l:1},{t:'Qtd. disc. em Recuperação final'},{t:'Qtd. disc. com possibilidade de Recuperação final'},{t:'Em Recuperação final (1º / 2º / 3º trim.)',l:1},{t:'Possibilidade de Recuperação final: precisa, necessariamente, de 60% no 3º trim.',l:1}],
+    lista.map((r,i)=>`<tr><td>${i+1}</td><td class="l">${escHtml(r.st.name)}</td><td class="${r.rec.length?'t-bad':''}"><b>${r.rec.length}</b></td><td class="${r.pc.length?'t-mid':''}"><b>${r.pc.length}</b></td><td class="l ${r.rec.length?'t-bad':''}">${r.rec.length ? r.rec.map(item).join('; ') : '—'}</td><td class="l ${r.pc.length?'t-mid':''}">${r.pc.length ? r.pc.map(item).join('; ') : '—'}</td></tr>`), 'rp-list')
     : `<div class="rp-ok">Nenhum aluno em Recuperação final nem com possibilidade de Recuperação final.</div>`;
   const resumo = `<b>${nRec}</b> aluno${nRec===1?'':'s'} com disciplina em Recuperação final &nbsp;·&nbsp; <b>${nPc}</b> aluno${nPc===1?'':'s'} com possibilidade de Recuperação final (precisa de 60% no 3º trim.) &nbsp;·&nbsp; <b>${cd.students.length-lista.length}</b> sem pendência a acompanhar`;
   return rpWrap(rpHeader('Situação dos alunos — Recuperação final e possibilidade de Recuperação final', escHtml(turma)+' · '+cd.students.length+' aluno'+(cd.students.length===1?'':'s')+' · '+escHtml(effectiveMesAno(cd))),
