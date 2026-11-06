@@ -528,6 +528,8 @@ body{
 .doc-brand{display:none;}
 .print-report-doc{display:none;}
 @page report{ size:A4 portrait; margin:7mm; }
+@page reportland{ size:A4 landscape; margin:7mm; }
+.rep-preview .rp-page.rp-land{width:283mm;}
 
 /* aba Relatórios (tela) */
 .rep-card{background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 16px; margin:0 0 12px; font-family:'Inter',sans-serif; font-size:13px; color:var(--ink);}
@@ -699,10 +701,24 @@ body{
 .qs-table tr.rp-sum + tr.rp-sum td{border-top:.5px solid #555;}
 .qs-table tr.rp-sum.blank td{height:8mm;}
 .qs-table tr.rp-sum td.l{text-align:right; padding-right:4px;}
+/* Modo ECONOMIA (preto e branco): só vale quando body.rep-bw, aplicado ao imprimir; tela e PDF colorido ficam intactos. Sem fundos coloridos. Contraste por negrito, bordas e hachura leve; quando preciso, cinza bem claro. */
+body.rep-bw .rp-page .t-bad{background:#e4e4e4 !important; color:#000 !important; font-weight:800;}
+body.rep-bw .rp-page .t-mid{background:repeating-linear-gradient(135deg,#fff 0 3px,#d6d6d6 3px 4px) !important; color:#000 !important;}
+body.rep-bw .rp-page .rp-sec-t, body.rep-bw .rp-page .qs-table thead th{background:#ececec;}
+body.rep-bw .rp-page .rp-table th, body.rep-bw .rp-page .qs-table thead th.qs-tot{background:#f4f4f4;}
+body.rep-bw .rp-page .rp-table tr.rp-sum td, body.rep-bw .rp-page .qs-table tr.rp-sum td{background:#f0f0f0;}
+body.rep-bw .rp-page .rp-bar{background:#ddd;} body.rep-bw .rp-page .rp-bar i{background:#444;}
+body.rep-bw .rp-page .rp-col.ok b{background:#fff;} body.rep-bw .rp-page .rp-col.bad b{background:#e4e4e4; border-width:1.5px; font-weight:800;}
+body.rep-bw .rp-page .rp-msg{background:#fff;}
+body.rep-bw .rp-page .rp-foot .sw.mid{background:repeating-linear-gradient(135deg,#fff 0 2px,#aaa 2px 3px);} body.rep-bw .rp-page .rp-foot .sw.bad{background:#e4e4e4;}
+body.rep-bw .rp-page .fm-ok{background:#fff;} body.rep-bw .rp-page .fm-rec{background:repeating-linear-gradient(45deg,#fff 0 3px,#888 3px 4.2px);} body.rep-bw .rp-page .fm-bad{background:#d2d2d2;} body.rep-bw .rp-page .fm-na{background:#f4f4f4;}
 .rep-tabs{display:flex; gap:6px; margin:0 0 14px; border-bottom:2px solid var(--ink);}
 .rep-tab{font-family:'Inter',sans-serif; font-size:13px; font-weight:600; padding:8px 16px; border:1px solid var(--line); border-bottom:none; border-radius:8px 8px 0 0; background:#fff; color:var(--ink); cursor:pointer;}
 .rep-tab.on{background:var(--ink); color:var(--paper); border-color:var(--ink);}
 .qs-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:14px;}
+.qs-ctl{display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end;}
+.qs-ctl label:not(.oer-chip){display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--ink-soft);}
+.qs-ctl select{padding:6px 8px; border:1px solid var(--line); border-radius:8px; font:13px Inter,sans-serif; background:#fff; color:var(--ink);}
 .qs-legend{display:flex; gap:14px; flex-wrap:wrap; align-items:center; padding:3px 7px; font-size:8pt;}
 .qs-legend .qs-k{display:inline-block; min-width:14px; text-align:center; border:.7px solid #000; padding:0 3px; font-weight:900; margin-right:4px;}
 
@@ -725,6 +741,9 @@ body{
   body.print-mode-report .print-report-doc{display:block !important; page:report;}
   .print-report-doc .rp-page{page-break-after:always; break-after:page;}
   .print-report-doc .rp-page:last-child{page-break-after:auto; break-after:auto;}
+  body.rep-land .print-report-doc{page:reportland;}
+  body.rep-land .rp-sec{break-inside:auto; page-break-inside:auto;}
+  body.rep-land .rp-table tr, body.rep-land .qs-table tr{break-inside:avoid; page-break-inside:avoid;}
 }
 </style>
 <script>try{if(sessionStorage.getItem('albertina:auth')!=='1')document.documentElement.classList.add('locked');}catch(e){document.documentElement.classList.add('locked');}</script>
@@ -3771,48 +3790,124 @@ function repTabsHtml(){
 function repBindTabs(main){
   main.querySelectorAll('.rep-tab').forEach(b=> b.onclick = ()=>{ repState.aba = b.dataset.aba; repState.preview = null; renderReportsTab(); });
 }
+// ---------- sub-aba "Gráficos do quadro": filtros e comparações dinâmicas ----------
+const qsG = {modo:'turmas', sit:'rec', un:'abs', tipo:'bar', ord:'ori', hide0:false, discs:null};
+const qsSerie = tl => { const m = String(tl).match(/^(\d+)º/); return m ? m[1]+'º ano' : 'Outras'; };
+const qsKindLbl = {rec:'Em Recuperação final (▲)', pos:'Possibilidade de Recuperação final (●)', soma:'▲ + ● (alunos em risco)', ambos:'▲ e ● juntos (Recuperação final + possibilidade)'};
+const qsHit = (m,k) => k==='rec' ? m==='REC' : k==='pos' ? m==='POSS_C' : (m==='REC'||m==='POSS_C');
+const qsFmt = v => qsG.un==='pct' ? v+'%' : v;
+const qsLight = new Set([QS_AMB,'#FFC000','#A5A5A5','#5B9BD5','#70AD47']);
+const qsBg = {id:'qsBg', beforeDraw(c){ const x=c.ctx; x.save(); x.globalCompositeOperation='destination-over'; x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.restore(); }};
+const qsVal2 = {id:'qsVal2', afterDatasetsDraw(c){
+  if(c.config.type==='radar') return;
+  const o = c.options, horiz = o.indexAxis==='y', stk = !!(o.scales.x && o.scales.x.stacked), x = c.ctx;
+  x.save(); x.font = 'bold 11px Inter, sans-serif';
+  c.data.datasets.forEach((ds,i)=>{ const m = c.getDatasetMeta(i); if(m.hidden) return;
+    m.data.forEach((b,k)=>{ const v = ds.data[k]; if(v===null || v===undefined || (stk && !v)) return;
+      if(stk){ const p = b.getCenterPoint(); x.fillStyle = (qsLight.has(ds.backgroundColor) || ds.light) ? '#1E2A2E' : '#fff'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(qsFmt(v), p.x, p.y); }
+      else if(horiz){ x.fillStyle='#1E2A2E'; x.textAlign='left'; x.textBaseline='middle'; x.fillText(qsFmt(v), b.x+4, b.y); }
+      else { x.fillStyle='#1E2A2E'; x.textAlign='center'; x.textBaseline='bottom'; x.fillText(qsFmt(v), b.x, b.y-3); } }); });
+  x.restore();
+}};
+function qsCount(Ds, disc, kind){
+  let n=0, tot=0, has=false;
+  Ds.forEach(t=>{ const j = t.subs.indexOf(disc); if(j<0) return; has = true; tot += t.rows.length; t.rows.forEach(r=>{ if(qsHit(r.marks[j],kind)) n++; }); });
+  if(!has) return null;
+  return qsG.un==='pct' ? (tot ? Math.round(n/tot*1000)/10 : 0) : n;
+}
+function qsSpec(D){
+  const G = qsG;
+  const all = [...new Set(D.flatMap(t=>t.subs))].sort((a,b)=>a.localeCompare(b));
+  const discs = all.filter(d=>!G.discs || G.discs.has(d));
+  let labels = discs, series;
+  if(G.modo==='disc'){
+    labels = D.map(t=>t.tl);
+    series = discs.map((d,i)=>({label:d, color:QS_PAL[i%QS_PAL.length], q:l=>({Ds:D.filter(t=>t.tl===l), disc:d, kind:G.sit})}));
+  } else if(G.modo==='serie'){
+    series = [...new Set(D.map(t=>t.serie))].sort().map((s,i)=>({label:s, color:QS_PAL[i%QS_PAL.length], q:l=>({Ds:D.filter(t=>t.serie===s), disc:l, kind:G.sit})}));
+  } else if(G.modo==='situ'){
+    series = [['rec',QS_RED],['pos',QS_AMB]].map(([k,c])=>({label:qsKindLbl[k], color:c, q:l=>({Ds:D, disc:l, kind:k})}));
+  } else if(G.sit==='ambos'){
+    series = D.flatMap((t,i)=>{ const c = QS_PAL[i%QS_PAL.length]; return [
+      {label:t.tl+' · ▲ Rec. final', color:c, stack:t.tl, q:l=>({Ds:[t], disc:l, kind:'rec'})},
+      {label:t.tl+' · ● Possibilidade', color:c+'8C', light:true, stack:t.tl, q:l=>({Ds:[t], disc:l, kind:'pos'})}]; });
+  } else {
+    series = D.map((t,i)=>({label:t.tl, color:QS_PAL[i%QS_PAL.length], q:l=>({Ds:[t], disc:l, kind:G.sit})}));
+  }
+  series.forEach(s=>{ s.data = labels.map(l=>{ const q = s.q(l); return qsCount(q.Ds, q.disc, q.kind); }); });
+  let idx = labels.map((_,i)=>i);
+  if(G.hide0) idx = idx.filter(i=>series.some(s=>s.data[i]));
+  if(G.ord==='desc'){ const tot = i=>series.reduce((a,s)=>a+(s.data[i]||0),0); idx.sort((a,b)=>tot(b)-tot(a)); }
+  const l0 = labels; labels = idx.map(i=>l0[i]);
+  series.forEach(s=>{ const d0 = s.data; s.data = idx.map(i=>d0[i]); });
+  return {labels, series};
+}
+function qsDrill(spec, di, i){
+  const box = document.getElementById('qsDrill'); if(!box) return;
+  const s = spec.series[di], q = s.q(spec.labels[i]), it = [];
+  q.Ds.forEach(t=>{ const j = t.subs.indexOf(q.disc); if(j<0) return; t.rows.forEach(r=>{ if(qsHit(r.marks[j],q.kind)) it.push({tl:t.tl, nm:r.name, m:r.marks[j]}); }); });
+  const scope = q.Ds.length>3 ? q.Ds.length+' turmas' : q.Ds.map(t=>t.tl).join(', ');
+  box.innerHTML = `<h3>${escHtml(q.disc)} · ${escHtml(qsKindLbl[q.kind])} · ${escHtml(scope)} — ${it.length} aluno${it.length===1?'':'s'}</h3>` +
+    (it.length ? `<div style="columns:2 260px;font-size:13px">${it.map(x=>`<div>${x.m==='REC'?'▲':'●'} ${escHtml(x.nm)} <span class="rep-hint">${escHtml(x.tl)}</span></div>`).join('')}</div>` : '<div class="rep-hint">Nenhum aluno neste recorte.</div>');
+  box.style.display = 'block'; box.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+function qsDrawMain(spec){
+  const G = qsG, el = document.getElementById('qsMain'); if(!el) return;
+  destroyChart('qsMain');
+  const radar = G.tipo==='radar', horiz = G.tipo==='barh', stk = G.tipo==='stack' || G.sit==='ambos';
+  const ds = spec.series.map(s=> radar
+    ? {label:s.label, data:s.data, borderColor:s.color, backgroundColor:s.color+'33', pointBackgroundColor:s.color, borderWidth:2}
+    : {label:s.label, data:s.data, backgroundColor:s.color, borderRadius:3, stack:s.stack, light:s.light});
+  const opts = {responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}},
+    onClick:(e,els)=>{ if(els.length) qsDrill(spec, els[0].datasetIndex, els[0].index); },
+    onHover:(e,els)=>{ e.native.target.style.cursor = els.length ? 'pointer' : 'default'; }};
+  if(radar) opts.scales = {r:{beginAtZero:true, ticks:{precision:0}}};
+  else {
+    opts.indexAxis = horiz ? 'y' : 'x';
+    const v = {beginAtZero:true, grace:'12%', stacked:stk, title:{display:true, text:G.un==='pct' ? '% de alunos' : 'Nº de alunos'}};
+    if(G.un!=='pct') v.ticks = {precision:0};
+    const c = {stacked:stk, ticks:{autoSkip:false, maxRotation:60}};
+    opts.scales = horiz ? {x:v, y:c} : {y:v, x:c};
+  }
+  dashCharts.qsMain = new Chart(el.getContext('2d'), {type: radar?'radar':'bar', data:{labels:spec.labels, datasets:ds}, options:opts, plugins:[qsVal2, qsBg]});
+}
 function renderQuadroGraficosTab(names){
-  const main = document.getElementById('main'), S = repState;
+  const main = document.getElementById('main'), S = repState, G = qsG;
+  Object.assign(G, {modo:'turmas', un:'abs', tipo:'bar', ord:'ori', hide0:false, discs:null});
+  if(G.sit!=='pos' && G.sit!=='ambos') G.sit = 'rec';
   Object.keys(dashCharts).filter(k=>k.startsWith('qs')).forEach(destroyChart);
   const sel = names.filter(n=>S.turmas.has(n));
   const allOn = names.every(n=>S.turmas.has(n));
+  const D = sel.map(nm=>{ const {subs,rows} = qsData(currentClasses[nm]), tl = shortTurmaLabel(nm); return {nm, tl, serie:qsSerie(tl), subs:subs.map(s=>titleCase(s.name)), rows}; });
   const st = sel.map(qsTurmaStats);
-  const tot = st.reduce((a,t)=>({n:a.n+t.n, r:a.r+t.alRec, p:a.p+t.alPos, f:a.f+t.nTrf}), {n:0,r:0,p:0,f:0});
-  let h = `<div class="hdr"><div><h1>Relatórios</h1><div class="hdr-sub">Gráficos do quadro de situação — os mesmos números da aba Resumo da planilha (.xlsx)</div></div></div>`;
+  let h = `<div class="hdr"><div><h1>Relatórios</h1><div class="hdr-sub">Quantidade de alunos por turma em cada disciplina</div></div></div>`;
   h += repTabsHtml();
-  h += `<div class="rep-card"><h3>Turmas</h3><div class="oer-tab-controls" style="margin:0">
-    <label class="oer-chip all${allOn?' on':''}"><input type="checkbox" id="repAllCb" ${allOn?'checked':''}> Todas</label>
-    ${names.map(n=>`<label class="oer-chip${S.turmas.has(n)?' on':''}" title="${escHtml(n)}"><input type="checkbox" class="rep-turma-cb" value="${escHtml(n)}" ${S.turmas.has(n)?'checked':''}> ${escHtml(shortTurmaLabel(n))}</label>`).join('')}
+  h += `<div class="rep-card"><div class="qs-ctl">
+    <div><h3>Turmas</h3><div class="oer-tab-controls" style="margin:0">
+      <label class="oer-chip all${allOn?' on':''}"><input type="checkbox" id="repAllCb" ${allOn?'checked':''}> Todas</label>
+      ${names.map(n=>`<label class="oer-chip${S.turmas.has(n)?' on':''}" title="${escHtml(n)}"><input type="checkbox" class="rep-turma-cb" value="${escHtml(n)}" ${S.turmas.has(n)?'checked':''}> ${escHtml(shortTurmaLabel(n))}</label>`).join('')}
+    </div></div>
+    <label>Situação<select id="qsSit"><option value="rec"${G.sit==='rec'?' selected':''}>▲ Em Recuperação final</option><option value="pos"${G.sit==='pos'?' selected':''}>● Possibilidade de Recuperação final</option><option value="ambos"${G.sit==='ambos'?' selected':''}>▲ e ● juntos</option></select></label>
   </div></div>`;
   if(!sel.length){
     h += `<div class="rep-card">Selecione ao menos uma turma para ver os gráficos.</div>`;
+    main.innerHTML = h;
   } else {
-    h += `<div class="rep-card"><div class="rep-row" style="margin:0"><span><b>${tot.n}</b> alunos nas turmas selecionadas</span><span>· <b>${tot.r}</b> em Recuperação final (▲ em 1 ou mais disciplinas)</span><span>· <b>${tot.p}</b> só com possibilidade (●, sem ▲)</span><span>· <b>${tot.f}</b> com TRF (X)</span></div>
-      <div class="rep-hint" style="margin-top:6px">No comparativo entre turmas cada aluno é contado uma só vez; um aluno com ▲ e ● entra apenas em Recuperação final. Nos gráficos por disciplina o aluno aparece em cada disciplina em que está.</div></div>`;
-    const card = (id,title,hgt) => `<div class="chart-card" style="margin-bottom:14px"><h4 style="margin:0 0 8px;font-family:'Fraunces',serif;font-size:15px">${escHtml(title)}</h4><div style="position:relative;height:${hgt||340}px"><canvas id="${id}"></canvas></div></div>`;
-    h += card('qsChartTurmas','Comparativo entre turmas — nº de alunos (cada aluno contado uma só vez)');
-    h += card('qsChartRec','Em Recuperação final (▲) por disciplina — comparação entre turmas', 380);
-    h += card('qsChartPos','Possibilidade de Recuperação final (●) por disciplina — comparação entre turmas', 380);
-    h += `<div class="section-title">Situação por disciplina, turma a turma</div><div class="qs-grid">${st.map((t,i)=>card('qsChartT'+i, t.tl+' — situação por disciplina', 300)).join('')}</div>`;
+    const spec = qsSpec(D);
+    h += `<div class="chart-card" style="margin-bottom:14px"><h4 style="margin:0 0 8px;font-family:'Fraunces',serif;font-size:15px">${escHtml(qsKindLbl[G.sit])} — alunos por disciplina, em cada turma</h4><div style="position:relative;height:400px"><canvas id="qsMain"></canvas></div><div class="rep-hint" style="margin-top:6px">Clique em uma barra para ver os nomes dos alunos.</div></div><div id="qsDrill" class="rep-card" style="display:none"></div>`;
+    h += `<div class="section-title">Cada turma: ▲ e ● por disciplina</div><div class="qs-grid">${st.map((t,i)=>`<div class="chart-card"><h4 style="margin:0 0 8px;font-family:'Fraunces',serif;font-size:15px">${escHtml(t.tl)}</h4><div style="position:relative;height:300px"><canvas id="qsChartT${i}"></canvas></div></div>`).join('')}</div>`;
+    main.innerHTML = h;
+    qsDrawMain(spec);
+    st.forEach((t,i)=> qsDrawChart('qsChartT'+i, t.discs.map(d=>d.name), [
+      {label:'Em Recuperação final (▲)', data:t.discs.map(d=>d.rec), backgroundColor:QS_RED},
+      {label:'Possibilidade de Recuperação final (●)', data:t.discs.map(d=>d.pos), backgroundColor:QS_AMB}]));
   }
-  main.innerHTML = h;
   repBindTabs(main);
-  const chg = fn => (...a)=>{ fn(...a); renderReportsTab(); };
+  const rr = fn => (...a)=>{ fn(...a); const y = window.scrollY; renderReportsTab(); window.scrollTo(0,y); };
   const all = document.getElementById('repAllCb');
-  if(all) all.onchange = chg(()=>{ S.turmas = all.checked ? new Set(names) : new Set(); });
-  main.querySelectorAll('.rep-turma-cb').forEach(cb=> cb.onchange = chg(()=>{ cb.checked ? S.turmas.add(cb.value) : S.turmas.delete(cb.value); }));
-  if(!sel.length) return;
-  qsDrawChart('qsChartTurmas', st.map(t=>t.tl), [
-    {label:'Alunos em Recuperação final (▲ em 1 ou mais disciplinas)', data:st.map(t=>t.alRec), backgroundColor:QS_RED},
-    {label:'Alunos só com possibilidade de Recuperação final (●, sem ▲)', data:st.map(t=>t.alPos), backgroundColor:QS_AMB}]);
-  const discs = [...new Set(st.flatMap(t=>t.discs.map(d=>d.name)))].sort((a,b)=>a.localeCompare(b));
-  const byTurma = (key) => st.map((t,j)=>({label:t.tl, backgroundColor:QS_PAL[j%QS_PAL.length],
-    data:discs.map(d=>{ const x = t.discs.find(y=>y.name===d); return x ? x[key] : null; })}));
-  qsDrawChart('qsChartRec', discs, byTurma('rec'));
-  qsDrawChart('qsChartPos', discs, byTurma('pos'));
-  st.forEach((t,i)=> qsDrawChart('qsChartT'+i, t.discs.map(d=>d.name), [
-    {label:'Em Recuperação final (▲)', data:t.discs.map(d=>d.rec), backgroundColor:QS_RED},
-    {label:'Possibilidade de Recuperação final (●)', data:t.discs.map(d=>d.pos), backgroundColor:QS_AMB}]));
+  if(all) all.onchange = rr(()=>{ S.turmas = all.checked ? new Set(names) : new Set(); });
+  main.querySelectorAll('.rep-turma-cb').forEach(cb=> cb.onchange = rr(()=>{ cb.checked ? S.turmas.add(cb.value) : S.turmas.delete(cb.value); }));
+  const sit = document.getElementById('qsSit'); if(sit) sit.onchange = rr(()=>{ G.sit = sit.value; });
 }
 
 // ---------- montagem / pré-visualização / impressão ----------
@@ -3856,9 +3951,31 @@ function repPreview(){
   box.innerHTML = html;
   box.scrollIntoView({behavior:'smooth', block:'start'});
 }
+// Retrato: 1 folha por turma · Paisagem: no máximo 2 folhas por turma. Reduz a escala (fonte e tabela) só quando o conteúdo não cabe.
+function repFitPages(doc, land){
+  const W = land ? 283 : 196, cap = (land ? 2*196*0.93 : 283*0.93) * 96/25.4;
+  // a área de impressão fica oculta na tela: torna visível (fora da vista) só durante a medição
+  const old = doc.style.cssText;
+  doc.style.cssText = 'display:block; position:absolute; left:-20000px; top:0; width:'+W+'mm;';
+  doc.querySelectorAll('.rp-page').forEach(p=>{
+    p.style.zoom = ''; p.style.width = W+'mm'; p.style.boxSizing = 'border-box';
+    const h = p.getBoundingClientRect().height;
+    const z = h>cap ? Math.max(0.5, cap/h) : 1;
+    if(z<1){ p.style.zoom = z.toFixed(3); p.style.width = (W/z).toFixed(2)+'mm'; }
+  });
+  doc.style.cssText = old;
+}
 function repPrint(){
   const html = repBuild(); if(!html) return;
-  runPrintMode('printReportDoc', html, 'print-mode-report');
+  const S = repState, perTurma = S.modo==='quadroSit' || S.modo==='listaTurma', land = perTurma && S.orient==='paisagem';
+  const doc = document.getElementById('printReportDoc');
+  doc.innerHTML = land ? html.replace(/class="rp-page"/g,'class="rp-page rp-land"') : html;
+  document.body.classList.add('print-mode-report');
+  if(land) document.body.classList.add('rep-land');
+  if(S.cor!=='cor') document.body.classList.add('rep-bw');
+  if(perTurma) repFitPages(doc, land);
+  window.print();
+  setTimeout(()=>{ document.body.classList.remove('print-mode-report','rep-land','rep-bw'); }, 300);
 }
 function repLogoUpload(file){
   if(!file) return;
@@ -3973,6 +4090,8 @@ function renderReportsTab(){
       <span class="rep-hint">A logo aparece em todos os documentos impressos (relatórios, cards de Recuperação final, tabelas e listagens).</span></div></div>`;
 
   h += `<div class="rep-card"><h3>${isLista?'5':'6'} · Recado opcional</h3><textarea id="repMsg" class="rep-msg-in" rows="2" placeholder="Opcional: aviso ou recado da coordenação, impresso em todos os relatórios gerados.">${escHtml(S.msg)}</textarea></div>`;
+  h += `<div class="rep-card"><h3>Cores na impressão</h3><div class="rep-row" style="margin:0"><label class="rep-v"><input type="radio" name="repCor" value="bw" ${S.cor!=='cor'?'checked':''}> Economia — preto e branco, sem fundos coloridos (impressora)</label><label class="rep-v"><input type="radio" name="repCor" value="cor" ${S.cor==='cor'?'checked':''}> Colorido (apresentação / salvar em PDF)</label></div></div>`;
+  if(S.modo==='quadroSit' || S.modo==='listaTurma') h += `<div class="rep-card"><h3>Orientação da folha</h3><div class="rep-row" style="margin:0"><label class="rep-v"><input type="radio" name="repOrient" value="retrato" ${S.orient!=='paisagem'?'checked':''}> Retrato — 1 folha por turma (a fonte é ajustada)</label><label class="rep-v"><input type="radio" name="repOrient" value="paisagem" ${S.orient==='paisagem'?'checked':''}> Paisagem — até 2 folhas por turma</label></div></div>`;
   h += `<div class="rep-actions"><button class="print-btn" id="repPreviewBtn">👁 Pré-visualizar</button><button class="print-btn" id="repPrintBtn">🖶 Imprimir relatório</button>${S.modo==='quadroSit'?'<button class="print-btn" id="repXlsxBtn">⬇ Baixar planilha (.xlsx)</button>':''}</div>
     <div id="repPreview" class="rep-preview"></div>`;
   main.innerHTML = h;
@@ -4031,6 +4150,8 @@ function renderReportsTab(){
   document.getElementById('repPreviewBtn').onclick = repPreview;
   document.getElementById('repPrintBtn').onclick = repPrint;
   repBindTabs(main);
+  main.querySelectorAll('[name=repCor]').forEach(r=> r.onchange = ()=>{ S.cor = r.value; });
+  main.querySelectorAll('[name=repOrient]').forEach(r=> r.onchange = chg(()=>{ S.orient = r.value; }));
   const qb = document.getElementById('repQsBlank'); if(qb) qb.onchange = chg(()=>{ S.qsBlank = qb.checked; });
   const xb = document.getElementById('repXlsxBtn'); if(xb) xb.onclick = repQuadroXlsx;
 }
