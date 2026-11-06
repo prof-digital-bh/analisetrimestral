@@ -681,6 +681,31 @@ body{
 .rp-c2 .rp-box b{font-size:11pt;} .rp-c2 .rp-boxes{padding:3px 5px;}
 .rp-c2 .rp-foot{font-size:6.6pt; margin-top:2px;}
 
+/* Quadro de situação por turma (X = Recuperação final · ● = possibilidade) */
+.qs-table{table-layout:fixed; width:100%; border-collapse:collapse;}
+.qs-table th, .qs-table td{border:.5px solid #555; text-align:center; vertical-align:middle; padding:0 1px; line-height:1;}
+.qs-table td{height:var(--rh,5mm); font-size:var(--fs,8pt); overflow:hidden; white-space:nowrap;}
+.qs-table td.nm{text-align:left; padding-left:3px; text-overflow:ellipsis; font-weight:600;}
+.qs-table td.n{color:#222;}
+.qs-table thead th{background:#dfe8f3; font-weight:700; vertical-align:bottom; padding:2px 0 3px;}
+.qs-table thead th.l{text-align:left; padding-left:3px; vertical-align:bottom;}
+.qs-table thead th.v > span{display:inline-block; writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; font-size:7.6pt; line-height:1.15; font-weight:700;}
+.qs-table thead th.qs-tot{background:#eef0f2; border-left:1.4px solid #000;}
+.qs-table td.qs-tot{border-left:1.4px solid #000; font-weight:800;}
+.qs-table td.qs-tot ~ td.qs-tot{border-left:.5px solid #555;}
+.qs-table td.qs-x{font-weight:900; font-size:calc(var(--fs,8pt) + 1pt);}
+.qs-table td.qs-o{font-size:calc(var(--fs,8pt) + 2pt);}
+.qs-table tr.rp-sum td{border-top:1.4px solid #000; font-weight:800; background:#e9e9e9;}
+.qs-table tr.rp-sum + tr.rp-sum td{border-top:.5px solid #555;}
+.qs-table tr.rp-sum.blank td{height:8mm;}
+.qs-table tr.rp-sum td.l{text-align:right; padding-right:4px;}
+.rep-tabs{display:flex; gap:6px; margin:0 0 14px; border-bottom:2px solid var(--ink);}
+.rep-tab{font-family:'Inter',sans-serif; font-size:13px; font-weight:600; padding:8px 16px; border:1px solid var(--line); border-bottom:none; border-radius:8px 8px 0 0; background:#fff; color:var(--ink); cursor:pointer;}
+.rep-tab.on{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+.qs-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:14px;}
+.qs-legend{display:flex; gap:14px; flex-wrap:wrap; align-items:center; padding:3px 7px; font-size:8pt;}
+.qs-legend .qs-k{display:inline-block; min-width:14px; text-align:center; border:.7px solid #000; padding:0 3px; font-weight:900; margin-right:4px;}
+
 @media print{
   /* faixa padrão (logo + nome da escola) no topo de toda folha impressa */
   .doc-brand{display:flex; align-items:center; gap:8px; border-bottom:2px solid #000; padding-bottom:3px; margin-bottom:5px; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
@@ -3504,6 +3529,292 @@ function repListaTurmaPage(cd, className){
     `<div class="rp-foot"><b>Notas:</b> ${REP_SIT_NOTA}${OER_REGRA_TXT}</div>`);
 }
 
+// Quadro de situação por TURMA: alunos em linhas, disciplinas em colunas (nomes na vertical).
+//  X = Recuperação final · ● = possibilidade de Recuperação final (precisa, necessariamente, de 60% no 3º trim.)
+//  + duas colunas com a quantidade total de cada situação por aluno e linhas de total por disciplina.
+// TRF = Trabalho de Recuperação Final (geral): X automático para o aluno com Recuperação final em pelo menos TRF_MIN disciplinas.
+const TRF_MIN = 2;
+function repQuadroSitPage(cd, className){
+  cd.meta = cd.meta || {};
+  const turma = shortTurmaLabel(className);
+  const subs = cd.subjects.map((name,idx)=>({name,idx})).filter(s=>!isLiteratura(s.name));
+  const students = cd.students.slice().sort((a,b)=> a.name.localeCompare(b.name));
+  const n = students.length;
+  const rows = students.map(st=>{
+    const marks = subs.map(s=> oerSituacao(subjectCalc(st.subjects[s.idx])).cod);
+    return {st, marks, nRec: marks.filter(c=>c==='REC').length, nPos: marks.filter(c=>c==='POSS_C').length};
+  });
+  const totRec = subs.map((s,j)=> rows.filter(r=>r.marks[j]==='REC').length);
+  const totPos = subs.map((s,j)=> rows.filter(r=>r.marks[j]==='POSS_C').length);
+  const sumRec = rows.reduce((a,r)=>a+r.nRec,0), sumPos = rows.reduce((a,r)=>a+r.nPos,0);
+  const nTrf = rows.filter(r=>r.nRec>=TRF_MIN).length;
+  const alRec = rows.filter(r=>r.nRec).length, alPos = rows.filter(r=>r.nPos).length;
+  const rh = Math.max(3.4, Math.min(6, 188/(n+3)));
+  const fs = rh>=4.6 ? 8 : (rh>=4 ? 7.4 : 6.8);
+  const cols = `<colgroup><col style="width:6mm"><col style="width:52mm">${subs.map(()=>'<col>').join('')}<col style="width:10mm"><col style="width:10mm"><col style="width:9mm"></colgroup>`;
+  const head = `<tr><th>Nº</th><th class="l">Aluno</th>${subs.map(s=>`<th class="v" title="${escHtml(s.name)}"><span>${escHtml(titleCase(s.name))}</span></th>`).join('')}<th class="v qs-tot"><span>Total Rec. final (▲)</span></th><th class="v qs-tot"><span>Total possibilidade (●)</span></th><th class="v qs-tot" title="Trabalho de Recuperação Final"><span>TRF</span></th></tr>`;
+  const cell = c => c==='REC' ? `<td class="t-bad qs-x">▲</td>` : c==='POSS_C' ? `<td class="t-mid qs-o">●</td>` : `<td></td>`;
+  const body = rows.map((r,i)=>`<tr><td class="n">${i+1}</td><td class="nm">${escHtml(r.st.name)}</td>${r.marks.map(cell).join('')}<td class="qs-tot ${r.nRec?'t-bad':''}">${r.nRec}</td><td class="qs-tot ${r.nPos?'t-mid':''}">${r.nPos}</td><td class="qs-tot qs-x ${r.nRec>=TRF_MIN?'t-bad':''}">${r.nRec>=TRF_MIN?'X':''}</td></tr>`).join('');
+  // repState.qsBlank: imprime as linhas de total em branco, para o professor preencher à mão após a atualização das notas
+  const blank = !!repState.qsBlank, V = v => blank ? '' : v;
+  const sum1 = `<tr class="rp-sum${blank?' blank':''}"><td class="l" colspan="2">Total de ▲ (Rec. final)</td>${totRec.map(v=>`<td>${V(v)}</td>`).join('')}<td class="qs-tot">${V(sumRec)}</td><td class="qs-tot"></td><td class="qs-tot">${V(nTrf)}</td></tr>`;
+  const sum2 = `<tr class="rp-sum${blank?' blank':''}"><td class="l" colspan="2">Total de ● (possibilidade)</td>${totPos.map(v=>`<td>${V(v)}</td>`).join('')}<td class="qs-tot"></td><td class="qs-tot">${V(sumPos)}</td><td class="qs-tot"></td></tr>`;
+  const table = `<table class="qs-table" style="--rh:${rh.toFixed(2)}mm; --fs:${fs}pt">${cols}<thead>${head}</thead><tbody>${body}${sum1}${sum2}</tbody></table>`;
+  const legenda = `<div class="qs-legend"><span><span class="qs-k t-bad">▲</span>Em Recuperação final</span><span><span class="qs-k t-mid">●</span>Possibilidade de Recuperação final</span>${blank?'':`<span><b>${alRec}</b> aluno${alRec===1?'':'s'} com ▲ &nbsp;·&nbsp; <b>${alPos}</b> aluno${alPos===1?'':'s'} com ●</span>`}<span><span class="qs-k t-bad">X</span>TRF — Trabalho de Recuperação Final</span></div>`;
+  const sub = escHtml(turma)+' · '+n+' aluno'+(n===1?'':'s')+' · '+escHtml(effectiveMesAno(cd))+(cd.meta.professor ? ' · Prof.(a) Referência: '+escHtml(cd.meta.professor) : '');
+  return rpWrap(rpHeader('Quadro de situação — Recuperação final e possibilidade de Recuperação final', sub),
+    rpMsg() + rpSec('Situação dos alunos por disciplina', legenda + table) +
+    `<div class="rp-foot"><b>Como ler:</b> <b>▲</b> = Recuperação final na disciplina (3º trimestre abaixo de 60%, ou 1º e 2º trimestres abaixo de 60%). <b>●</b> = possibilidade de Recuperação final: perdeu a média em um dos dois primeiros trimestres e precisa, necessariamente, de 60% no 3º trimestre. Célula em branco = sem pendência ou sem notas suficientes. As colunas de total somam, por aluno, as disciplinas com ▲ e com ●. <b>TRF</b> (Trabalho de Recuperação Final geral): o <b>X</b> já vem marcado para o aluno em Recuperação final em ${TRF_MIN} ou mais disciplinas; as demais células ficam em branco para o professor marcar os casos em que o 3º trimestre ainda não estiver definido. Literatura não é exibida.</div>`);
+}
+
+// ---------- planilha (.xlsx) do quadro de situação: uma aba por turma + aba Resumo ----------
+// Gerada no próprio navegador (sem bibliotecas externas): XML do Office Open XML dentro de um .zip sem compressão.
+function qsData(cd){
+  const subs = cd.subjects.map((name,idx)=>({name,idx})).filter(s=>!isLiteratura(s.name));
+  const students = cd.students.slice().sort((a,b)=> a.name.localeCompare(b.name));
+  const rows = students.map(st=>{
+    const marks = subs.map(s=> oerSituacao(subjectCalc(st.subjects[s.idx])).cod);
+    const nRec = marks.filter(c=>c==='REC').length, nPos = marks.filter(c=>c==='POSS_C').length;
+    return {name:st.name, marks, nRec, nPos, trf:nRec>=TRF_MIN};
+  });
+  return {subs, rows};
+}
+function xlCol(i){ let s=''; i++; while(i>0){ const m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=Math.floor((i-1)/26); } return s; }
+const xlEsc = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'');
+const xS = (r,c,t,s) => `<c r="${xlCol(c)}${r}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${xlEsc(t)}</t></is></c>`;
+const xN = (r,c,v,s,f) => `<c r="${xlCol(c)}${r}" s="${s}">${f?`<f>${xlEsc(f)}</f>`:''}<v>${v}</v></c>`;
+const xE = (r,c,s) => `<c r="${xlCol(c)}${r}" s="${s}"/>`;
+const xRow = (r,cells,ht) => `<row r="${r}"${ht?` ht="${ht}" customHeight="1"`:''}>${cells.join('')}</row>`;
+const xSheet = (rows,widths,freeze,draw) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0">${freeze?`<pane ${freeze[0]?`xSplit="${freeze[0]}" `:''}ySplit="${freeze[1]}" topLeftCell="${xlCol(freeze[0])}${freeze[1]+1}" activePane="${freeze[0]?'bottomRight':'bottomLeft'}" state="frozen"/>`:''}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${rows.join('')}</sheetData>${draw?'<drawing r:id="rId1"/>':''}</worksheet>`;
+// estilos: 1 cabeçalho · 2 célula centro · 3 célula esquerda · 4 ▲/X (vermelho) · 5 ● (amarelo) · 6 título · 7 rótulo de total · 8 número de total · 9 cabeçalho vertical · 10 cabeçalho esquerda
+const XL_STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font></fonts><fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDFE8F3"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF7B9B0"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFEAA0"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE9E9E9"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF555555"/></left><right style="thin"><color rgb="FF555555"/></right><top style="thin"><color rgb="FF555555"/></top><bottom style="thin"><color rgb="FF555555"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="11"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="1" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="bottom" textRotation="90"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="bottom"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+
+function qsSheetTurma(className){
+  const cd = currentClasses[className];
+  const {subs, rows} = qsData(cd);
+  const n = rows.length, k = subs.length;
+  const cT1 = 2+k, cT2 = 3+k, cTrf = 4+k;           // colunas (0-based): total ▲, total ●, TRF
+  const f = 5, l = 4+n;                              // 1ª e última linha de alunos
+  const R = [];
+  R.push(xRow(1,[xS(1,0,shortTurmaLabel(className)+' — Quadro de situação: Recuperação final e possibilidade de Recuperação final',6)],22));
+  R.push(xRow(2,[xS(2,0,schoolName()+' · '+effectiveMesAno(cd)+' · '+n+' aluno'+(n===1?'':'s'),0)]));
+  R.push(xRow(3,[xS(3,0,'▲ = Recuperação final · ● = possibilidade de Recuperação final (precisa de 60% no 3º trim.) · X (TRF) = Trabalho de Recuperação Final: Recuperação final em '+TRF_MIN+' ou mais disciplinas. As células em branco da coluna TRF são para o professor marcar.',0)]));
+  R.push(xRow(4,[xS(4,0,'Nº',1),xS(4,1,'Aluno',10),...subs.map((s,j)=>xS(4,2+j,titleCase(s.name),9)),xS(4,cT1,'Total Rec. final (▲)',9),xS(4,cT2,'Total possibilidade (●)',9),xS(4,cTrf,'TRF',9)],110));
+  rows.forEach((r,i)=>{
+    const rr = f+i;
+    const cells = [xN(rr,0,i+1,2),xS(rr,1,r.name,3)];
+    r.marks.forEach((c,j)=>{ cells.push(c==='REC' ? xS(rr,2+j,'▲',4) : c==='POSS_C' ? xS(rr,2+j,'●',5) : xE(rr,2+j,2)); });
+    const rng = `${xlCol(2)}${rr}:${xlCol(1+k)}${rr}`;
+    cells.push(xN(rr,cT1,r.nRec,2,`COUNTIF(${rng},"▲")`), xN(rr,cT2,r.nPos,2,`COUNTIF(${rng},"●")`));
+    cells.push(r.trf ? xS(rr,cTrf,'X',4) : xE(rr,cTrf,2));
+    R.push(xRow(rr,cells));
+  });
+  const rt1 = l+1, rt2 = l+2;
+  const totRec = subs.map((s,j)=> rows.filter(r=>r.marks[j]==='REC').length);
+  const totPos = subs.map((s,j)=> rows.filter(r=>r.marks[j]==='POSS_C').length);
+  const sumRec = rows.reduce((a,r)=>a+r.nRec,0), sumPos = rows.reduce((a,r)=>a+r.nPos,0), nTrf = rows.filter(r=>r.trf).length;
+  const colRng = c => `${xlCol(c)}${f}:${xlCol(c)}${l}`;
+  R.push(xRow(rt1,[xE(rt1,0,7),xS(rt1,1,'Total de ▲ (Rec. final)',7),...totRec.map((v,j)=>xN(rt1,2+j,v,8,`COUNTIF(${colRng(2+j)},"▲")`)),xN(rt1,cT1,sumRec,8,`SUM(${colRng(cT1)})`),xE(rt1,cT2,8),xN(rt1,cTrf,nTrf,8,`COUNTIF(${colRng(cTrf)},"X")`)]));
+  R.push(xRow(rt2,[xE(rt2,0,7),xS(rt2,1,'Total de ● (possibilidade)',7),...totPos.map((v,j)=>xN(rt2,2+j,v,8,`COUNTIF(${colRng(2+j)},"●")`)),xE(rt2,cT1,8),xN(rt2,cT2,sumPos,8,`SUM(${colRng(cT2)})`),xE(rt2,cTrf,8)]));
+  return xSheet(R,[5,38,...subs.map(()=>6.5),9,9,7],[2,4]);
+}
+function qsSheetResumo(names){
+  const R = [], charts = [];
+  const rg = (c,a,b) => `Resumo!$${xlCol(c)}$${a}:$${xlCol(c)}$${b}`;
+  R.push(xRow(1,[xS(1,0,'Resumo — Recuperação final e possibilidade de Recuperação final, por turma e disciplina',6)],22));
+  R.push(xRow(2,[xS(2,0,schoolName()+' · Emitido em '+new Date().toLocaleDateString('pt-BR')+' · Gráficos à direita da tabela. No comparativo entre turmas cada aluno conta uma só vez; nos gráficos por disciplina o aluno aparece em cada disciplina em que está.',0)]));
+  R.push(xRow(3,[xS(3,0,'Turma',10),xS(3,1,'Disciplina',10),xS(3,2,'Alunos',1),xS(3,3,'Em Recuperação final (▲)',1),xS(3,4,'Possibilidade de Recuperação final (●)',1),xS(3,5,'Alunos com TRF (X)',1)],48));
+  let r = 4, gAl = 0, gRec = 0, gPos = 0, gTrf = 0;
+  const turmas = [];   // {tl, a, b, sRec, sPos, byDisc:Map(nome->{rec,pos})}
+  names.forEach(nm=>{
+    const cd = currentClasses[nm], {subs, rows} = qsData(cd), tl = shortTurmaLabel(nm), n = rows.length;
+    let sRec = 0, sPos = 0; const a0 = r, byDisc = new Map();
+    subs.forEach((s,j)=>{
+      const a = rows.filter(x=>x.marks[j]==='REC').length, b = rows.filter(x=>x.marks[j]==='POSS_C').length;
+      sRec += a; sPos += b; byDisc.set(titleCase(s.name), {rec:a, pos:b});
+      R.push(xRow(r,[xS(r,0,tl,3),xS(r,1,titleCase(s.name),3),xN(r,2,n,2),xN(r,3,a,a?4:2),xN(r,4,b,b?5:2),xE(r,5,2)])); r++;
+    });
+    const a1 = r-1, nTrf = rows.filter(x=>x.trf).length;
+    R.push(xRow(r,[xS(r,0,tl,7),xS(r,1,'TOTAL DA TURMA (soma das disciplinas)',7),xN(r,2,n,8),xN(r,3,sRec,8),xN(r,4,sPos,8),xN(r,5,nTrf,8)])); r++;
+    gAl += n; gRec += sRec; gPos += sPos; gTrf += nTrf;
+    // alunos DISTINTOS (cada aluno conta uma só vez, mesmo com várias disciplinas): em Rec. final = ▲ em 1 ou mais; só possibilidade = ● e nenhum ▲
+    turmas.push({tl, a0, a1, sRec, sPos, byDisc, alRec: rows.filter(x=>x.nRec>0).length, alPos: rows.filter(x=>x.nRec===0 && x.nPos>0).length});
+  });
+  R.push(xRow(r,[xS(r,0,'TODAS',7),xS(r,1,'TOTAL GERAL',7),xN(r,2,gAl,8),xN(r,3,gRec,8),xN(r,4,gPos,8),xN(r,5,gTrf,8)])); r++;
+
+  // blocos de dados (abaixo da tabela) que alimentam os gráficos comparativos
+  const CR = 'D9534F', CP = 'F0AD4E', PAL = ['4472C4','ED7D31','70AD47','7F6084','00A3A3','A5A5A5','C00000','5B9BD5','FFC000','264478','9E480E','636363'];
+  r += 2;
+  R.push(xRow(r,[xS(r,1,'Dados dos gráficos — alunos por turma (cada aluno contado uma só vez)',1),xS(r,3,'Alunos em Recuperação final (▲ em 1 ou mais disciplinas)',1),xS(r,4,'Alunos só com possibilidade (●, sem ▲)',1)],62)); r++;
+  const t1 = r;
+  turmas.forEach(t=>{ R.push(xRow(r,[xS(r,1,t.tl,3),xN(r,3,t.alRec,2),xN(r,4,t.alPos,2)])); r++; });
+  const t2 = r-1;
+  charts.push({title:'Comparativo entre turmas — nº de alunos (cada aluno contado uma só vez)', series:[
+    {name:'Alunos em Recuperação final (▲ em 1 ou mais disciplinas)', color:CR, cat:rg(1,t1,t2), val:rg(3,t1,t2)},
+    {name:'Alunos só com possibilidade de Recuperação final (●, sem ▲)', color:CP, cat:rg(1,t1,t2), val:rg(4,t1,t2)}]});
+  const discs = [...new Set(turmas.flatMap(t=>[...t.byDisc.keys()]))].sort((a,b)=>a.localeCompare(b));
+  [['rec','Em Recuperação final (▲)'],['pos','Possibilidade de Recuperação final (●)']].forEach(([key,label])=>{
+    r += 2;
+    R.push(xRow(r,[xS(r,1,'Dados dos gráficos — '+label+', por disciplina',1),...turmas.map((t,j)=>xS(r,2+j,t.tl,1))],32)); r++;
+    const d1 = r;
+    discs.forEach(d=>{ R.push(xRow(r,[xS(r,1,d,3),...turmas.map((t,j)=>{ const v = t.byDisc.get(d); return v ? xN(r,2+j,v[key],2) : xE(r,2+j,2); })])); r++; });
+    const d2 = r-1;
+    charts.push({title:label+' por disciplina — comparação entre turmas', series: turmas.map((t,j)=>({name:t.tl, color:PAL[j%PAL.length], cat:rg(1,d1,d2), val:rg(2+j,d1,d2)}))});
+  });
+  turmas.forEach(t=>{
+    charts.push({title:t.tl+' — situação por disciplina', series:[
+      {name:'Em Recuperação final (▲)', color:CR, cat:rg(1,t.a0,t.a1), val:rg(3,t.a0,t.a1)},
+      {name:'Possibilidade de Recuperação final (●)', color:CP, cat:rg(1,t.a0,t.a1), val:rg(4,t.a0,t.a1)}]});
+  });
+  return {xml:xSheet(R,[10,36,9,16,20,14,3],[0,3],true), charts};
+}
+function qsChartXml(ch){
+  const ser = ch.series.map((s,i)=>`<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:v>${xlEsc(s.name)}</c:v></c:tx><c:spPr><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></c:spPr><c:invertIfNegative val="0"/><c:dLbls><c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbls><c:cat><c:strRef><c:f>${s.cat}</c:f></c:strRef></c:cat><c:val><c:numRef><c:f>${s.val}</c:f></c:numRef></c:val></c:ser>`).join('');
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:roundedCorners val="0"/><c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1100" b="1"/></a:pPr><a:r><a:rPr lang="pt-BR" sz="1100" b="1"/><a:t>${xlEsc(ch.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/><c:plotArea><c:layout/><c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/>${ser}<c:gapWidth val="70"/><c:axId val="111"/><c:axId val="222"/></c:barChart><c:catAx><c:axId val="111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:numFmt formatCode="General" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:txPr><a:bodyPr rot="-2700000" vert="horz"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr><a:endParaRPr lang="pt-BR"/></a:p></c:txPr><c:crossAx val="222"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx><c:valAx><c:axId val="222"/><c:scaling><c:orientation val="minMax"/><c:min val="0"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:title><c:tx><c:rich><a:bodyPr rot="-5400000" vert="horz"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr><a:r><a:rPr lang="pt-BR" sz="900"/><a:t>Nº de alunos</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:numFmt formatCode="0" sourceLinked="0"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="111"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx></c:plotArea><c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend><c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>`;
+}
+function qsDrawingXml(n){
+  let a = '';
+  for(let i=0;i<n;i++){
+    const c0 = 7 + (i%2)*10, r0 = 3 + Math.floor(i/2)*21;
+    a += `<xdr:twoCellAnchor><xdr:from><xdr:col>${c0}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${r0}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>${c0+9}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${r0+20}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="${i+2}" name="Grafico ${i+1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" r:id="rId${i+1}"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>`;
+  }
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${a}</xdr:wsDr>`;
+}
+function zipStore(files){
+  const enc = new TextEncoder();
+  const crcT = (()=>{ const t = new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = (c&1) ? (0xEDB88320^(c>>>1)) : (c>>>1); t[n]=c>>>0; } return t; })();
+  const crc = u8 => { let c=0xFFFFFFFF; for(let i=0;i<u8.length;i++) c = crcT[(c^u8[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; };
+  const u16 = v => [v&255,(v>>>8)&255], u32 = v => [v&255,(v>>>8)&255,(v>>>16)&255,(v>>>24)&255];
+  const parts = [], central = []; let off = 0;
+  files.forEach(fl=>{
+    const nm = enc.encode(fl.name), d = enc.encode(fl.text), c = crc(d);
+    const lh = new Uint8Array([0x50,0x4b,3,4,...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(c),...u32(d.length),...u32(d.length),...u16(nm.length),...u16(0)]);
+    parts.push(lh,nm,d);
+    central.push(new Uint8Array([0x50,0x4b,1,2,...u16(20),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(c),...u32(d.length),...u32(d.length),...u16(nm.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(off)]), nm);
+    off += lh.length + nm.length + d.length;
+  });
+  const cdSize = central.reduce((a,x)=>a+x.length,0);
+  central.push(new Uint8Array([0x50,0x4b,5,6,...u16(0),...u16(0),...u16(files.length),...u16(files.length),...u32(cdSize),...u32(off),...u16(0)]));
+  const all = [...parts,...central], out = new Uint8Array(all.reduce((a,x)=>a+x.length,0)); let p = 0;
+  all.forEach(x=>{ out.set(x,p); p += x.length; });
+  return out;
+}
+function qsBuildXlsx(names){
+  const used = new Set(['Resumo']);
+  const tabs = names.map(nm=>{
+    let base = shortTurmaLabel(nm).replace(/[\[\]:*?\/\\]/g,'-').trim().slice(0,28) || 'Turma', t = base, i = 2;
+    while(used.has(t.toLowerCase()) || used.has(t)){ t = base+' ('+(i++)+')'; }
+    used.add(t); used.add(t.toLowerCase());
+    return {nm, tab:t};
+  });
+  const resumo = qsSheetResumo(names), NC = resumo.charts.length;
+  const sheets = [{tab:'Resumo', xml:resumo.xml}, ...tabs.map(x=>({tab:x.tab, xml:qsSheetTurma(x.nm)}))];
+  const N = sheets.length;
+  const files = [
+    {name:'[Content_Types].xml', text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>${resumo.charts.map((c,i)=>`<Override PartName="/xl/charts/chart${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`).join('')}${sheets.map((s,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`},
+    {name:'_rels/.rels', text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`},
+    {name:'xl/workbook.xml', text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((s,i)=>`<sheet name="${xlEsc(s.tab)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets><calcPr fullCalcOnLoad="1"/></workbook>`},
+    {name:'xl/_rels/workbook.xml.rels', text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((s,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}<Relationship Id="rId${N+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
+    {name:'xl/styles.xml', text:XL_STYLES},
+    ...sheets.map((s,i)=>({name:`xl/worksheets/sheet${i+1}.xml`, text:s.xml})),
+    {name:'xl/worksheets/_rels/sheet1.xml.rels', text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>`},
+    {name:'xl/drawings/drawing1.xml', text:qsDrawingXml(NC)},
+    {name:'xl/drawings/_rels/drawing1.xml.rels', text:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${resumo.charts.map((c,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart${i+1}.xml"/>`).join('')}</Relationships>`},
+    ...resumo.charts.map((c,i)=>({name:`xl/charts/chart${i+1}.xml`, text:qsChartXml(c)}))
+  ];
+  return zipStore(files);
+}
+function repQuadroXlsx(){
+  const nm = Object.keys(currentClasses).sort().filter(n=>repState.turmas.has(n));
+  if(!nm.length){ alert('Selecione ao menos uma turma.'); return; }
+  const blob = new Blob([qsBuildXlsx(nm)], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'quadro-situacao-turmas.xlsx';
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+// ---------- sub-aba "Gráficos do quadro" (mesmos números da aba Resumo da planilha) ----------
+function qsTurmaStats(nm){
+  const cd = currentClasses[nm], {subs, rows} = qsData(cd);
+  return {
+    tl: shortTurmaLabel(nm), n: rows.length,
+    discs: subs.map((s,j)=>({name:titleCase(s.name), rec:rows.filter(x=>x.marks[j]==='REC').length, pos:rows.filter(x=>x.marks[j]==='POSS_C').length})),
+    // alunos DISTINTOS: cada aluno conta uma só vez, mesmo com várias disciplinas
+    alRec: rows.filter(x=>x.nRec>0).length,
+    alPos: rows.filter(x=>x.nRec===0 && x.nPos>0).length,
+    nTrf: rows.filter(x=>x.trf).length
+  };
+}
+const QS_PAL = ['#4472C4','#ED7D31','#70AD47','#7F6084','#00A3A3','#A5A5A5','#C00000','#5B9BD5','#FFC000','#264478','#9E480E','#636363'];
+const QS_RED = '#D9534F', QS_AMB = '#F0AD4E';
+const qsValuePlugin = {id:'qsValues', afterDatasetsDraw(chart){
+  const ctx = chart.ctx; ctx.save(); ctx.font = 'bold 11px Inter, sans-serif'; ctx.fillStyle = '#1E2A2E'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  chart.data.datasets.forEach((ds,i)=>{ const meta = chart.getDatasetMeta(i); if(meta.hidden) return;
+    meta.data.forEach((bar,k)=>{ const v = ds.data[k]; if(v===null || v===undefined) return; ctx.fillText(v, bar.x, bar.y-3); }); });
+  ctx.restore();
+}};
+function qsDrawChart(id, labels, datasets){
+  const el = document.getElementById(id); if(!el) return;
+  destroyChart(id);
+  dashCharts[id] = new Chart(el.getContext('2d'), {
+    type:'bar', data:{labels, datasets: datasets.map(d=>({...d, borderRadius:3}))},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{position:'bottom'} },
+      scales:{ y:{ beginAtZero:true, grace:'12%', ticks:{precision:0}, title:{display:true, text:'Nº de alunos'} }, x:{ ticks:{autoSkip:false, maxRotation:60} } } },
+    plugins:[qsValuePlugin]
+  });
+}
+function repTabsHtml(){
+  const a = repState.aba==='graf' ? 'graf' : 'rel';
+  return `<div class="rep-tabs"><button class="rep-tab${a==='rel'?' on':''}" data-aba="rel">🖶 Relatórios para impressão</button><button class="rep-tab${a==='graf'?' on':''}" data-aba="graf">📊 Gráficos do quadro</button></div>`;
+}
+function repBindTabs(main){
+  main.querySelectorAll('.rep-tab').forEach(b=> b.onclick = ()=>{ repState.aba = b.dataset.aba; repState.preview = null; renderReportsTab(); });
+}
+function renderQuadroGraficosTab(names){
+  const main = document.getElementById('main'), S = repState;
+  Object.keys(dashCharts).filter(k=>k.startsWith('qs')).forEach(destroyChart);
+  const sel = names.filter(n=>S.turmas.has(n));
+  const allOn = names.every(n=>S.turmas.has(n));
+  const st = sel.map(qsTurmaStats);
+  const tot = st.reduce((a,t)=>({n:a.n+t.n, r:a.r+t.alRec, p:a.p+t.alPos, f:a.f+t.nTrf}), {n:0,r:0,p:0,f:0});
+  let h = `<div class="hdr"><div><h1>Relatórios</h1><div class="hdr-sub">Gráficos do quadro de situação — os mesmos números da aba Resumo da planilha (.xlsx)</div></div></div>`;
+  h += repTabsHtml();
+  h += `<div class="rep-card"><h3>Turmas</h3><div class="oer-tab-controls" style="margin:0">
+    <label class="oer-chip all${allOn?' on':''}"><input type="checkbox" id="repAllCb" ${allOn?'checked':''}> Todas</label>
+    ${names.map(n=>`<label class="oer-chip${S.turmas.has(n)?' on':''}" title="${escHtml(n)}"><input type="checkbox" class="rep-turma-cb" value="${escHtml(n)}" ${S.turmas.has(n)?'checked':''}> ${escHtml(shortTurmaLabel(n))}</label>`).join('')}
+  </div></div>`;
+  if(!sel.length){
+    h += `<div class="rep-card">Selecione ao menos uma turma para ver os gráficos.</div>`;
+  } else {
+    h += `<div class="rep-card"><div class="rep-row" style="margin:0"><span><b>${tot.n}</b> alunos nas turmas selecionadas</span><span>· <b>${tot.r}</b> em Recuperação final (▲ em 1 ou mais disciplinas)</span><span>· <b>${tot.p}</b> só com possibilidade (●, sem ▲)</span><span>· <b>${tot.f}</b> com TRF (X)</span></div>
+      <div class="rep-hint" style="margin-top:6px">No comparativo entre turmas cada aluno é contado uma só vez; um aluno com ▲ e ● entra apenas em Recuperação final. Nos gráficos por disciplina o aluno aparece em cada disciplina em que está.</div></div>`;
+    const card = (id,title,hgt) => `<div class="chart-card" style="margin-bottom:14px"><h4 style="margin:0 0 8px;font-family:'Fraunces',serif;font-size:15px">${escHtml(title)}</h4><div style="position:relative;height:${hgt||340}px"><canvas id="${id}"></canvas></div></div>`;
+    h += card('qsChartTurmas','Comparativo entre turmas — nº de alunos (cada aluno contado uma só vez)');
+    h += card('qsChartRec','Em Recuperação final (▲) por disciplina — comparação entre turmas', 380);
+    h += card('qsChartPos','Possibilidade de Recuperação final (●) por disciplina — comparação entre turmas', 380);
+    h += `<div class="section-title">Situação por disciplina, turma a turma</div><div class="qs-grid">${st.map((t,i)=>card('qsChartT'+i, t.tl+' — situação por disciplina', 300)).join('')}</div>`;
+  }
+  main.innerHTML = h;
+  repBindTabs(main);
+  const chg = fn => (...a)=>{ fn(...a); renderReportsTab(); };
+  const all = document.getElementById('repAllCb');
+  if(all) all.onchange = chg(()=>{ S.turmas = all.checked ? new Set(names) : new Set(); });
+  main.querySelectorAll('.rep-turma-cb').forEach(cb=> cb.onchange = chg(()=>{ cb.checked ? S.turmas.add(cb.value) : S.turmas.delete(cb.value); }));
+  if(!sel.length) return;
+  qsDrawChart('qsChartTurmas', st.map(t=>t.tl), [
+    {label:'Alunos em Recuperação final (▲ em 1 ou mais disciplinas)', data:st.map(t=>t.alRec), backgroundColor:QS_RED},
+    {label:'Alunos só com possibilidade de Recuperação final (●, sem ▲)', data:st.map(t=>t.alPos), backgroundColor:QS_AMB}]);
+  const discs = [...new Set(st.flatMap(t=>t.discs.map(d=>d.name)))].sort((a,b)=>a.localeCompare(b));
+  const byTurma = (key) => st.map((t,j)=>({label:t.tl, backgroundColor:QS_PAL[j%QS_PAL.length],
+    data:discs.map(d=>{ const x = t.discs.find(y=>y.name===d); return x ? x[key] : null; })}));
+  qsDrawChart('qsChartRec', discs, byTurma('rec'));
+  qsDrawChart('qsChartPos', discs, byTurma('pos'));
+  st.forEach((t,i)=> qsDrawChart('qsChartT'+i, t.discs.map(d=>d.name), [
+    {label:'Em Recuperação final (▲)', data:t.discs.map(d=>d.rec), backgroundColor:QS_RED},
+    {label:'Possibilidade de Recuperação final (●)', data:t.discs.map(d=>d.pos), backgroundColor:QS_AMB}]));
+}
+
 // ---------- montagem / pré-visualização / impressão ----------
 function repCurrentVars(){
   if(repState.modo==='turma') return repState.varsTur;
@@ -3512,9 +3823,10 @@ function repCurrentVars(){
 }
 function repBuild(){
   const S = repState;
-  if(S.modo==='listaTurma' || S.modo==='listaDisc'){
+  if(S.modo==='listaTurma' || S.modo==='listaDisc' || S.modo==='quadroSit'){
     const nm = Object.keys(currentClasses).sort().filter(n=>S.turmas.has(n));
     if(!nm.length){ alert('Selecione ao menos uma turma.'); return null; }
+    if(S.modo==='quadroSit') return nm.map(n=>repQuadroSitPage(currentClasses[n], n)).join('');
     if(S.modo==='listaTurma') return nm.map(n=>repListaTurmaPage(currentClasses[n], n)).join('');
     let out = '';
     nm.forEach(n=>{ const cd = currentClasses[n];
@@ -3580,8 +3892,9 @@ function renderReportsTab(){
   const cdA = currentClasses[S.turmaAluno];
   S.alunos = new Set([...S.alunos].filter(i=>cdA.students[i]));
   const chg = fn => (...a)=>{ fn(...a); S.preview = null; renderReportsTab(); };
+  if(S.aba==='graf') return renderQuadroGraficosTab(names);
 
-  const isLista = S.modo==='listaTurma' || S.modo==='listaDisc';
+  const isLista = S.modo==='listaTurma' || S.modo==='listaDisc' || S.modo==='quadroSit';
   const isMulti = S.modo==='turma' || isLista;
   const scopeNames = isMulti ? names.filter(n=>S.turmas.has(n)) : [S.turmaAluno];
   const discList = [...new Set(scopeNames.flatMap(n=>currentClasses[n].subjects.filter(sn=>!isLiteratura(sn))))].sort((a,b)=>a.localeCompare(b));
@@ -3590,12 +3903,14 @@ function renderReportsTab(){
 
   const modeCard = (v,t,d)=>`<label class="rep-mode${S.modo===v?' on':''}"><input type="radio" name="repModo" value="${v}" ${S.modo===v?'checked':''}><b>${t}</b><span>${d}</span></label>`;
   let h = `<div class="hdr"><div><h1>Relatórios</h1><div class="hdr-sub">Relatórios por turma ou individuais, sempre com cabeçalho, nome e logo da escola</div></div></div>`;
+  h += repTabsHtml();
   h += `<div class="rep-card"><h3>1 · Tipo de relatório</h3><div class="rep-modes">
     ${modeCard('turma','Relatório da turma','Indicadores, resultado por disciplina, alunos em Recuperação final, acompanhamento e destaques')}
     ${modeCard('ind','Individual — família e aluno (recomendado)','Uma folha A4 por aluno, em linguagem simples e com gráficos, para a família e o aluno acompanharem e analisarem o trimestre')}
     ${modeCard('indp','Individual — detalhado (escolher variáveis)','Modelo em tabelas para conselho de classe e coordenação, só com as informações que você marcar')}
     ${modeCard('listaTurma','Listagem por turma — Recuperação final e possibilidade de Recuperação final','Alunos da turma que já estão em Recuperação final e os que podem ir para ela (perderam a média em um dos dois primeiros e precisam de 60% no 3º trimestre)')}
     ${modeCard('listaDisc','Listagem por disciplina/turma — situação dos alunos','Uma folha por disciplina em cada turma, com todos os alunos ordenados por situação (Recuperação final, possibilidade de Recuperação final e demais)')}
+    ${modeCard('quadroSit','Quadro de situação por turma — X e ●','Uma folha por turma: alunos em linhas e disciplinas em colunas (nomes na vertical). ▲ = Recuperação final, ● = possibilidade de Recuperação final, X = TRF, com colunas de totais')}
   </div></div>`;
 
   if(isMulti){
@@ -3621,7 +3936,9 @@ function renderReportsTab(){
     </select></div></div>`;
 
   if(isLista){
-    const inc = S.modo==='listaTurma'
+    const inc = S.modo==='quadroSit'
+      ? ['Uma folha A4 por turma, com todos os alunos em linhas e as disciplinas em colunas (nomes na vertical, para ocupar menos espaço)','▲ marca o aluno em Recuperação final na disciplina; ● marca o aluno com possibilidade de Recuperação final (perdeu a média em um dos dois primeiros trimestres e precisa de 60% no 3º)','Colunas de total de ▲ e de ● por aluno, coluna TRF (X para quem tem Recuperação final em 2 ou mais disciplinas) e linhas de total por disciplina']
+      : S.modo==='listaTurma'
       ? ['Por turma: alunos com disciplina em Recuperação final (com o % do 1º, 2º e 3º trimestres)','Alunos com possibilidade de Recuperação final: perderam a média em um dos dois primeiros trimestres e precisam, necessariamente, de 60% no 3º','Resumo com o número de alunos em cada situação e quantos estão sem pendência']
       : ['Uma folha por disciplina em cada turma selecionada, com todos os alunos da turma','Situação de cada aluno: em Recuperação final, possibilidade de Recuperação final (precisa de 60% no 3º trim.), provável progressão (média nos dois primeiros), progressão garantida ou sem notas suficientes','Ordenação por situação (Recuperação final primeiro) e depois por nome, com o % de cada trimestre'];
     if(S.modo==='listaDisc'){
@@ -3632,6 +3949,7 @@ function renderReportsTab(){
       </div></div>`;
     }
     h += `<div class="rep-card"><h3>${S.modo==='listaDisc'?'3b':'3'} · O que a listagem inclui</h3><ul class="rep-inc">${inc.map(x=>`<li>${x}</li>`).join('')}</ul><div class="rep-hint">Regra: Recuperação final = 1º e 2º trimestres abaixo de 60%, ou 3º trimestre abaixo de 60%. Passa quem alcança 60% no 3º e tem média em pelo menos um dos dois primeiros.</div></div>`;
+    if(S.modo==='quadroSit') h += `<div class="rep-card"><h3>3b · Opções do quadro</h3><label class="rep-v"><input type="checkbox" id="repQsBlank" ${S.qsBlank?'checked':''}> Imprimir as linhas de total (rodapé do quadro) em branco, para o professor preencher após a atualização das notas</label><div class="rep-hint">Com a opção marcada, as linhas de total por disciplina e a contagem de alunos da legenda saem sem números. As colunas de total por aluno e o TRF continuam preenchidos. A planilha (.xlsx) não é afetada: ela sempre traz os totais, calculados por fórmulas.</div></div>`;
   } else if(S.modo==='ind'){
     const inc = ['Resumo: frase de leitura, aproveitamento geral e situação nas disciplinas','Gráfico por disciplina, com a média (60%) e a comparação com a turma','Gráfico de evolução ao longo dos trimestres (aluno × turma)','Gráfico dos pontos necessários no 3º trimestre (Recuperação final), quando houver risco','Leitura do trimestre e orientações em linguagem simples','Espaço para o aluno analisar e planejar; observações do professor; ciência do responsável e assinaturas'];
     h += `<div class="rep-card"><h3>4 · O que o modelo padrão inclui</h3><ul class="rep-inc">${inc.map(x=>`<li>${x}</li>`).join('')}</ul><div class="rep-hint">Quer um modelo em tabelas, escolhendo as informações? Use “Individual — detalhado”.</div></div>`;
@@ -3655,7 +3973,7 @@ function renderReportsTab(){
       <span class="rep-hint">A logo aparece em todos os documentos impressos (relatórios, cards de Recuperação final, tabelas e listagens).</span></div></div>`;
 
   h += `<div class="rep-card"><h3>${isLista?'5':'6'} · Recado opcional</h3><textarea id="repMsg" class="rep-msg-in" rows="2" placeholder="Opcional: aviso ou recado da coordenação, impresso em todos os relatórios gerados.">${escHtml(S.msg)}</textarea></div>`;
-  h += `<div class="rep-actions"><button class="print-btn" id="repPreviewBtn">👁 Pré-visualizar</button><button class="print-btn" id="repPrintBtn">🖶 Imprimir relatório</button></div>
+  h += `<div class="rep-actions"><button class="print-btn" id="repPreviewBtn">👁 Pré-visualizar</button><button class="print-btn" id="repPrintBtn">🖶 Imprimir relatório</button>${S.modo==='quadroSit'?'<button class="print-btn" id="repXlsxBtn">⬇ Baixar planilha (.xlsx)</button>':''}</div>
     <div id="repPreview" class="rep-preview"></div>`;
   main.innerHTML = h;
   if(S.preview) document.getElementById('repPreview').innerHTML = S.preview;
@@ -3712,6 +4030,9 @@ function renderReportsTab(){
   document.getElementById('repMsg').oninput = e=>{ S.msg = e.target.value; };
   document.getElementById('repPreviewBtn').onclick = repPreview;
   document.getElementById('repPrintBtn').onclick = repPrint;
+  repBindTabs(main);
+  const qb = document.getElementById('repQsBlank'); if(qb) qb.onchange = chg(()=>{ S.qsBlank = qb.checked; });
+  const xb = document.getElementById('repXlsxBtn'); if(xb) xb.onclick = repQuadroXlsx;
 }
 
 
