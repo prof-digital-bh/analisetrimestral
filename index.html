@@ -616,7 +616,8 @@ body{
 .rp-wrap{width:100%; border-collapse:collapse;}
 .rp-wrap > thead{display:table-header-group;}
 .rp-wrap > tfoot{display:table-footer-group;}
-.rp-credit{margin-top:4px; padding-top:2px; border-top:.6px solid #000; text-align:center; font-size:7pt; line-height:1.25; color:#000;}
+.rp-credit{margin-top:4px; padding-top:2px; border-top:.6px solid #000; display:flex; justify-content:space-between; align-items:flex-end; gap:12px; text-align:left; font-size:7pt; line-height:1.25; color:#000;}
+.rp-credit .rp-cr-r{text-align:right; white-space:nowrap;}
 .rp-credit small{font-size:6pt;}
 .rp-c2 .rp-credit{font-size:6.4pt; margin-top:2px; padding-top:1px;} .rp-c2 .rp-credit small{font-size:5.6pt;}
 .rp-wrap > thead > tr > td, .rp-wrap > tbody > tr > td, .rp-wrap > tfoot > tr > td{border:0; padding:0; vertical-align:top;}
@@ -2333,7 +2334,7 @@ function renderMain(){
 
   html += `<div class="print-footer">
     <div>Prof.(a) Referência: <strong>${escHtml(cd.meta.professor||'')}</strong></div>
-    <div>Pedagoga: <strong>Dandara Aimee dos Santos</strong></div>
+    <div>Pedagoga: <strong>${escHtml(pedagogaDe(activeClass))}</strong></div>
   </div>`;
   html += `<div id="detailPanel"></div>`;
   main.innerHTML = html;
@@ -3122,8 +3123,13 @@ function rpHeader(title, sub){
   return `<div class="rp-hdr"><img class="rp-logo" src="${getLogo()}" alt="Logo da escola"><div class="rp-hdr-mid"><div class="rp-school">${escHtml(schoolName())}</div><div class="rp-title">${title}</div>${sub?`<div class="rp-sub">${sub}</div>`:''}</div><div class="rp-hdr-right">Emitido em<br><b>${hoje}</b></div></div>`;
 }
 // Relatórios de várias folhas: o cabeçalho (logo + nome da escola) fica no <thead> e se repete em toda folha impressa.
-const rpCredit = () => `<div class="rp-credit">Fonte dos dados: ${escHtml(FONTE_DADOS)}<br>Produzido por: Prof. Everton Correa Alves / GEOGRAFIA - <small>(everton.alves@edu.contagem.mg.gov.br)</small></div>`;
-const rpWrap = (hdr, body) => `<section class="rp-page"><table class="rp-wrap"><thead><tr><td>${hdr}</td></tr></thead><tbody><tr><td>${body}</td></tr></tbody><tfoot><tr><td>${rpCredit()}</td></tr></tfoot></table></section>`;
+// Pedagoga por ano: 8º e 9º = Dandara Aimee dos Santos · 5º, 6º e 7º = Maria Emilia Pimenta Seabra
+function pedagogaDe(turma){
+  const g = (String(shortTurmaLabel(turma||'')).match(/(\d)º/)||[])[1];
+  return (g==='8'||g==='9') ? 'Dandara Aimee dos Santos' : (g==='5'||g==='6'||g==='7') ? 'Maria Emilia Pimenta Seabra' : '';
+}
+const rpCredit = turma => { const ped = pedagogaDe(turma); return `<div class="rp-credit"><div class="rp-cr-l">Fonte dos dados: ${escHtml(FONTE_DADOS)}<br>Produzido por: Prof. Everton Correa Alves / GEOGRAFIA - <small>(everton.alves@edu.contagem.mg.gov.br)</small></div>${ped?`<div class="rp-cr-r">Pedagoga:<br><b>${escHtml(ped)}</b></div>`:''}</div>`; };
+const rpWrap = (hdr, body) => `<section class="rp-page"><table class="rp-wrap"><thead><tr><td>${hdr}</td></tr></thead><tbody><tr><td>${body}</td></tr></tbody><tfoot><tr><td>${rpCredit((String(hdr).match(/\dº[A-Za-z]\b/)||[''])[0])}</td></tr></tfoot></table></section>`;
 const rpSec = (title, body) => `<div class="rp-sec"><div class="rp-sec-t">${title}</div>${body}</div>`;
 function rpTable(heads, rows, cls){
   return `<table class="rp-table ${cls||''}"><thead><tr>${heads.map(h=>`<th${h.l?' class="l"':''}>${h.t}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
@@ -3131,8 +3137,8 @@ function rpTable(heads, rows, cls){
 const rpBar = p => p===null ? '' : `<div class="rp-bar"><i style="width:${Math.max(0,Math.min(100,Math.round(p)))}%"></i></div>`;
 function rpLines(n){ return `<div class="rp-lines">${'<div></div>'.repeat(n)}</div>`; }
 function rpMsg(){ return repState.msg.trim() ? `<div class="rp-msg"><b>Recado da coordenação:</b> ${escHtml(repState.msg.trim()).replace(/\n/g,'<br>')}</div>` : ''; }
-function rpAssin(prof){
-  return `<div class="rp-sign"><div><span></span>Prof.(a) Referência: ${escHtml(prof||'')}</div><div><span></span>Dandara Aimee dos Santos<br><small>Pedagoga</small></div></div>`;
+function rpAssin(prof, turma){
+  return `<div class="rp-sign"><div><span></span>Prof.(a) Referência: ${escHtml(prof||'')}</div><div><span></span>${escHtml(pedagogaDe(turma))}<br><small>Pedagoga</small></div></div>`;
 }
 const RP_TINT_NOTE = 'Cores: branco = na média; <span class="sw mid"></span>amarelo = entre 40% e 69%; <span class="sw bad"></span><b>vermelho</b> = abaixo da média (ou abaixo de 40%).';
 
@@ -3242,12 +3248,12 @@ function repIndividualPage(cd, className, st, V, t){
   const msg = rpMsg(); if(msg) parts.push(msg);
   if(V.has('parecer')) parts.push(rpSec('Parecer / observações do professor', rpLines(4)));
   if(V.has('ciencia')) parts.push(`<div class="rp-field">Ciente do responsável: ______________________________________ &nbsp; Data: ____/____/______</div>`);
-  if(V.has('assin')) parts.push(rpAssin(cd.meta && cd.meta.professor));
+  if(V.has('assin')) parts.push(rpAssin(cd.meta && cd.meta.professor, className));
 
   const foot = `<div class="rp-foot"><b>Notas:</b> Todos os valores são aproveitamento (%); média = 60%. ${RP_TINT_NOTE} “–” = sem nota. Literatura não exibida.</div>`;
   const nRows = data.length + data.filter(d=>d.oer).length; // disciplinas + linhas do quadro de Recuperação final
   const dens = nRows>=17 ? ' rp-c2' : (nRows>=12 ? ' rp-c1' : ''); // compacta sozinho p/ manter 1 folha por aluno
-  return `<section class="rp-page${dens}">${rpHeader('Relatório individual do aluno', escHtml(turma)+' · '+repTriNome(t)+' · '+escHtml(effectiveMesAno(cd)))}${parts.join('')}${foot}${rpCredit()}</section>`;
+  return `<section class="rp-page${dens}">${rpHeader('Relatório individual do aluno', escHtml(turma)+' · '+repTriNome(t)+' · '+escHtml(effectiveMesAno(cd)))}${parts.join('')}${foot}${rpCredit(className)}</section>`;
 }
 
 // ---------- relatório individual para FAMÍLIA e ALUNO (uma folha A4, com gráficos) ----------
@@ -3390,10 +3396,10 @@ function repFamiliaPage(cd, className, st, t){
   parts.push(`<div class="rp-sec"><div class="rp-sec-t">Minha análise e meu plano (aluno)</div><div class="fm-q">O que percebo neste resultado? O que vou fazer no próximo trimestre?</div>${rpLines(ln+2)}</div>`);
   const msg = rpMsg(); if(msg) parts.push(msg);
   parts.push(`<div class="rp-field">Faltas: ____ · Frequência: ____ % &nbsp;&nbsp; Ciente do responsável: ____________________________ Data: ___/___/_____</div>`);
-  parts.push(rpAssin(cd.meta && cd.meta.professor));
+  parts.push(rpAssin(cd.meta && cd.meta.professor, className));
   const foot = `<div class="rp-foot"><b>Como ler:</b> a linha tracejada marca a média (60% dos pontos) e o losango preto, a média da turma.  Literatura não é exibida.</div>`;
   const dens = (n>=14 || (n>=10 && risk.length>=8)) ? ' rp-c2' : (n>=11 ? ' rp-c1' : '');
-  return `<section class="rp-page fm${dens}">${rpHeader('Acompanhamento do aluno — leitura para a família e o aluno', escHtml(turma)+' · '+repTriNome(t)+' · '+escHtml(effectiveMesAno(cd)))}${parts.join('')}${foot}${rpCredit()}</section>`;
+  return `<section class="rp-page fm${dens}">${rpHeader('Acompanhamento do aluno — leitura para a família e o aluno', escHtml(turma)+' · '+repTriNome(t)+' · '+escHtml(effectiveMesAno(cd)))}${parts.join('')}${foot}${rpCredit(className)}</section>`;
 }
 
 // ---------- relatório da turma ----------
@@ -3456,7 +3462,7 @@ function repTurmaPage(cd, className, V, t){
   const msg = rpMsg(); if(msg) parts.push(msg);
   if(V.has('parecer')) parts.push(rpSec('Parecer do conselho de classe', rpLines(5)));
   if(V.has('plano')) parts.push(rpSec('Plano de intervenção', rpTable([{t:'Ação / encaminhamento',l:1},{t:'Responsável',l:1},{t:'Prazo'}], [1,2,3,4].map(()=>'<tr class="blank"><td></td><td></td><td></td></tr>'),'rp-plan')));
-  if(V.has('assin')) parts.push(rpAssin(cd.meta && cd.meta.professor));
+  if(V.has('assin')) parts.push(rpAssin(cd.meta && cd.meta.professor, className));
 
   const foot = `<div class="rp-foot"><b>Notas:</b> “% na média” = alunos que atingiram a média ÷ alunos com nota lançada${t==='ALL'?'; no acumulado, a média é 60% do máximo de pontos do ano':'; média = 60%'}. “Média (%)” e “Mediana (%)” são calculadas sobre o % de pontos obtidos. Em acompanhamento = abaixo da média em 2 ou mais disciplinas. Recuperação final = 1º e 2º trimestres abaixo de 60%, ou 3º trimestre abaixo de 60%; passa quem alcança 60% no 3º e tem média em pelo menos um dos dois primeiros. ${RP_TINT_NOTE} Literatura não é exibida.</div>`;
   return rpWrap(rpHeader('Relatório da turma', escHtml(turma)+' · '+repTriNome(t)+' · '+escHtml(effectiveMesAno(cd))), parts.join('')+foot);
